@@ -1,0 +1,1 @@
+export {tipService} from './tipService';

@@ -1,0 +1,26 @@
+// Global init script to suppress third-party library warnings
+allprojects {
+    // Set logging level to reduce verbosity from third-party modules
+    gradle.beforeProject { project ->
+        // Reduce logging for node_modules projects
+        if (project.path.contains("node_modules")) {
+            logging.captureStandardOutput LogLevel.ERROR
+            logging.captureStandardError LogLevel.ERROR
+        }
+    }
+    
+    // Configure global warning suppression
+    gradle.projectsEvaluated {
+        tasks.withType(JavaCompile) {
+            // Only show warnings for app module
+            if (!project.path.contains("node_modules") && project.name == "app") {
+                options.compilerArgs << "-Xlint:all"
+            } else {
+                options.compilerArgs << "-Xlint:none"
+            }
+        }
+    }
+}
+
+// Set system properties to reduce verbosity
+System.setProperty("java.util.logging.config.file", "logging.properties")

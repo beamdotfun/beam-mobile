@@ -1,0 +1,7 @@
+{
+  "name": "Beam",
+  "displayName": "Beam",
+  "expo": {
+    "userInterfaceStyle": "automatic"
+  }
+}

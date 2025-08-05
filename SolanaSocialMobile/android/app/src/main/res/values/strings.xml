@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Beam</string>
+    <color name="splash_background_color">#FFFFFF</color>
+</resources>

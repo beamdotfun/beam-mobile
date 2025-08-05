@@ -1,0 +1,37 @@
+import org.gradle.api.logging.LogLevel
+
+// Suppress warnings from third-party libraries
+allprojects { project ->
+    // Configure tasks when added
+    project.tasks.whenTaskAdded { task ->
+        // Suppress Java compilation warnings
+        if (task instanceof JavaCompile) {
+            // Suppress warnings for third-party projects
+            if (project.name.contains("react-native-") || 
+                project.name.contains("@react-native-") ||
+                project.name.contains("hermes-") ||
+                project.path.contains("node_modules")) {
+                task.options.warnings = false
+                task.options.compilerArgs = ["-Xlint:none"]
+            } else if (project.name == "app") {
+                // For app module, only suppress specific warnings
+                task.options.compilerArgs += [
+                    "-Xlint:-deprecation",
+                    "-Xlint:-unchecked"
+                ]
+            }
+        }
+        
+        // Disable lint checks for third-party modules
+        if (task.name.toLowerCase().contains("lint") && 
+            (project.path.contains("node_modules") || 
+             project.name.contains("react-native-"))) {
+            task.enabled = false
+        }
+    }
+    
+    // Set gradle logging level for third-party modules
+    if (project.path.contains("node_modules")) {
+        gradle.startParameter.logLevel = LogLevel.WARN
+    }
+}

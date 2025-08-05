@@ -1,0 +1,49 @@
+# Mobile Development Repository
+# ===========================
+
+# Temporary files
+*.tmp
+*.temp
+working.txt
+
+# Log files
+logs/
+*.log
+debug-*.js
+fix-*.js
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependency directories
+node_modules/
+package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+dist/
+build/
+
+# Sensitive files
+*secret*
+*.key
+*.pem
+!client_secret_*.json  # Allow Google OAuth config files (they don't contain secrets)
