@@ -28,11 +28,14 @@ import SolanaSettingsScreen from '../screens/settings/SolanaSettingsScreen';
 import BadgesSettingsScreen from '../screens/settings/BadgesSettingsScreen';
 import EditUsernameScreen from '../screens/settings/EditUsernameScreen';
 import EditProfilePictureScreen from '../screens/settings/EditProfilePictureScreen';
+import NFTSelectionScreen from '../screens/settings/NFTSelectionScreen';
 import SendTipScreen from '../screens/tips/SendTipScreen';
 import VoteSelectionScreen from '../screens/vote/VoteSelectionScreen';
 import VerificationScreen from '../screens/verification/VerificationScreen';
 import BuySOLScreen from '../screens/feed/BuySOLScreen';
 import ThreadSendScreen from '../screens/thread/ThreadSendScreen';
+import { TransferDemoScreen } from '../screens/TransferDemoScreen';
+import TokensHomeScreen from '../screens/tokens/TokensHomeScreen';
 
 const Stack = createNativeStackNavigator<FeedStackParamList>();
 
@@ -59,6 +62,13 @@ export default function FeedNavigator() {
       />
       <Stack.Screen
         name="UserProfile"
+        component={UserProfileScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Profile"
         component={ProfileScreen}
         options={{
           headerShown: false,
@@ -70,13 +80,6 @@ export default function FeedNavigator() {
         options={{
           headerShown: false,
           presentation: 'modal',
-        }}
-      />
-      <Stack.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{
-          headerShown: false,
         }}
       />
       <Stack.Screen
@@ -165,6 +168,14 @@ export default function FeedNavigator() {
           gestureEnabled: false, // Disable swipe back
         }}
       />
+      <Stack.Screen
+        name="Tokens"
+        component={TokensHomeScreen}
+        options={{
+          headerShown: false,
+          gestureEnabled: false, // Disable swipe back
+        }}
+      />
       {/* Settings sub-screens */}
       <Stack.Screen
         name="GeneralSettings"
@@ -231,6 +242,13 @@ export default function FeedNavigator() {
         }}
       />
       <Stack.Screen
+        name="NFTSelection"
+        component={NFTSelectionScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="BuySOL"
         component={BuySOLScreen}
         options={{
@@ -243,6 +261,13 @@ export default function FeedNavigator() {
         options={{
           headerShown: false,
           presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="TransferDemo"
+        component={TransferDemoScreen}
+        options={{
+          headerShown: false,
         }}
       />
     </Stack.Navigator>

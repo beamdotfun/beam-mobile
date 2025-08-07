@@ -90,18 +90,25 @@ export default function LeaderboardScreen({navigation}: LeaderboardScreenProps) 
   }, [selectedPeriod, loadLeaderboard, isAuthenticated, isRehydrated]);
 
   const handleUserPress = useCallback(
-    (walletAddress: string) => {
-      console.log('🔍 LeaderboardScreen: handleUserPress called with walletAddress:', walletAddress);
+    (userIdentifier: string) => {
+      console.log('🔍 LeaderboardScreen: handleUserPress called with userIdentifier:', userIdentifier);
       
-      // Navigate to Feed tab first, then to Profile screen  
-      const parent = navigation.getParent();
-      console.log('🔍 LeaderboardScreen: Parent navigator:', parent ? 'found' : 'not found');
+      if (!userIdentifier) {
+        console.error('🚨 LeaderboardScreen: No user identifier provided!');
+        return;
+      }
+      
+      // Navigate to Feed tab first, then to UserProfile screen 
+      const parent = navigation.getParent()?.getParent(); // Need to go up two levels: LeaderboardStack -> TabNavigator
       
       if (parent) {
-        console.log('🔍 LeaderboardScreen: Navigating to Feed -> Profile with params:', { walletAddress });
+        // Always pass as walletAddress since the leaderboard API provides wallet addresses
+        const params = { walletAddress: userIdentifier };
+          
+        console.log('🔍 LeaderboardScreen: Navigating to Feed -> Profile with params:', params);
         parent.navigate('Feed', {
           screen: 'Profile',
-          params: { walletAddress }
+          params
         });
         console.log('🔍 LeaderboardScreen: Navigation call completed');
       } else {
@@ -122,8 +129,8 @@ export default function LeaderboardScreen({navigation}: LeaderboardScreenProps) 
     ];
     
     if (feedTabScreens.includes(screen)) {
-      // Navigate to Feed tab first, then to the specific screen
-      const parent = navigation.getParent();
+      // Navigate to Feed tab first, then to the specific screen - need to go up two levels
+      const parent = navigation.getParent()?.getParent(); // LeaderboardStack -> TabNavigator
       if (parent) {
         parent.navigate('Feed', {
           screen: screen,
@@ -131,11 +138,11 @@ export default function LeaderboardScreen({navigation}: LeaderboardScreenProps) 
         });
       }
     } else if (screen === 'Profile') {
-      // Navigate to Feed tab, then to Profile screen
-      const parent = navigation.getParent();
+      // Navigate to Feed tab, then to UserProfile screen
+      const parent = navigation.getParent()?.getParent(); // LeaderboardStack -> TabNavigator
       if (parent) {
         parent.navigate('Feed', {
-          screen: 'Profile',
+          screen: 'UserProfile',
           params: params
         });
       }
@@ -586,11 +593,40 @@ export default function LeaderboardScreen({navigation}: LeaderboardScreenProps) 
             const currentLeaderboard = selectedPeriod === 0 ? epochLeaderboard : reputationLeaderboard;
             
             if (currentLeaderboard.length > 0) {
-              return currentLeaderboard.map((entry, index) => (
+              return currentLeaderboard.map((entry, index) => {
+                // Debug: Log what fields are available in each entry
+                if (index === 0) {
+                  console.log('🔍 LeaderboardScreen: First entry structure:', {
+                    hasOwner: !!entry.owner,
+                    hasWalletAddress: !!entry.walletAddress,
+                    hasAddress: !!entry.address,
+                    hasPrimaryWalletAddress: !!entry.primaryWalletAddress,
+                    hasUsername: !!entry.username,
+                    hasWallet: !!entry.wallet,
+                    actualFields: Object.keys(entry),
+                    owner: entry.owner,
+                    walletAddress: entry.walletAddress,
+                    wallet: entry.wallet,
+                    username: entry.username
+                  });
+                }
+                
+                // Get wallet address from the API response (it's in walletAddress field)
+                const userWalletAddress = entry.walletAddress || entry.wallet || entry.owner || entry.address || entry.primaryWalletAddress;
+                
+                // Skip entries that have no wallet address
+                if (!userWalletAddress) {
+                  console.warn('🚨 LeaderboardScreen: Skipping entry with no wallet address:', entry.displayName || 'Unknown');
+                  return null;
+                }
+                
+                const userIdentifier = userWalletAddress;
+                
+                return (
                 <Pressable
-                  key={entry.id || `leaderboard-${selectedPeriod}-${index}-${entry.walletAddress}`}
+                  key={entry.id || `leaderboard-${selectedPeriod}-${index}-${userIdentifier}`}
                   style={styles.leaderboardCard}
-                  onPress={() => handleUserPress(entry.walletAddress)}>
+                  onPress={() => handleUserPress(userIdentifier)}>
                   
                   {/* Rank Medal/Badge */}
                   <View style={styles.rankSection}>
@@ -631,7 +667,8 @@ export default function LeaderboardScreen({navigation}: LeaderboardScreenProps) 
                     </View>
                   </View>
                 </Pressable>
-              ));
+              );
+              }).filter(Boolean);
             } else if (leaderboardLoading) {
               return <FeedSkeleton itemCount={8} showImages={false} />;
             } else {

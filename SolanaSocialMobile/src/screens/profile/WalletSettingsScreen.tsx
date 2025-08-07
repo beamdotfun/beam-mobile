@@ -95,7 +95,7 @@ export default function WalletSettingsScreen({navigation}: Props) {
     defaultSlippage: 0.5,
     autoApproveLimit: 0.1,
     customRpcUrl: '',
-    customPriorityFee: 0.001,
+    customPriorityFee: 0.0001,
   };
 
   const handleRpcChange = async (rpcUrl: string) => {
@@ -354,7 +354,7 @@ export default function WalletSettingsScreen({navigation}: Props) {
                     <TextInput
                       value={customPriorityFee}
                       onChangeText={setCustomPriorityFee}
-                      placeholder="0.001"
+                      placeholder="0.0001"
                       placeholderTextColor={colors.mutedForeground}
                       keyboardType="decimal-pad"
                       className="flex-1 px-3 py-2 rounded-lg text-sm"

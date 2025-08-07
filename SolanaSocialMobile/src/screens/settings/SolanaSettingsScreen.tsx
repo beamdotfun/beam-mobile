@@ -13,6 +13,7 @@ import {useThemeStore} from '../../store/themeStore';
 import {useAuthStore} from '../../store/auth';
 import {useProfileStore} from '../../store/profileStore';
 import {AppNavBar} from '../../components/navigation/AppNavBar';
+import {Toast} from '../../components/ui/Toast';
 
 interface SolanaSettingsScreenProps {
   navigation: any;
@@ -92,7 +93,11 @@ const mapUIExplorerToAPI = (uiExplorer: BlockchainExplorer): string => {
 export default function SolanaSettingsScreen({navigation}: SolanaSettingsScreenProps) {
   const {colors} = useThemeStore();
   const {user} = useAuthStore();
-  const {currentProfile} = useProfileStore();
+  const {currentProfile, updateProfile, loadProfile} = useProfileStore();
+  const [isSaving, setIsSaving] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'warning' | 'info'>('info');
   
   // Get the most complete profile data available
   const profileData = currentProfile || user;
@@ -115,7 +120,9 @@ export default function SolanaSettingsScreen({navigation}: SolanaSettingsScreenP
   useEffect(() => {
     console.log('🔍 SolanaSettingsScreen: useEffect triggered');
     console.log('  - currentProfile exists:', !!currentProfile);
+    console.log('  - currentProfile.explorer:', currentProfile?.explorer);
     console.log('  - user exists:', !!user);
+    console.log('  - user.explorer:', user?.explorer);
     
     // Get data from currentProfile or user with proper API-to-UI mapping
     const dataSource = currentProfile || user || {};
@@ -134,7 +141,7 @@ export default function SolanaSettingsScreen({navigation}: SolanaSettingsScreenP
     
     setSelectedExplorer(newSelectedExplorer);
     setConnectionMethod(newConnectionMethod);
-  }, [currentProfile, user?.connectionMethod, user?.explorer]);
+  }, [currentProfile?.explorer, currentProfile?.connectionMethod, user?.connectionMethod, user?.explorer]);
 
   const handleConnectionMethodChange = useCallback((method: ConnectionMethod) => {
     setConnectionMethod(method);
@@ -146,7 +153,7 @@ export default function SolanaSettingsScreen({navigation}: SolanaSettingsScreenP
     console.log('Explorer changed:', explorer);
   }, []);
 
-  const handleSaveChanges = useCallback(() => {
+  const handleSaveChanges = useCallback(async () => {
     // Map UI values back to API values for saving
     const apiExplorer = mapUIExplorerToAPI(selectedExplorer);
     
@@ -156,9 +163,35 @@ export default function SolanaSettingsScreen({navigation}: SolanaSettingsScreenP
       apiExplorer: apiExplorer, // API value to send
     });
     
-    // TODO: Implement actual save API call with mapped values
-    // Example: socialAPI.updateProfile({ connectionMethod, explorer: apiExplorer })
-  }, [connectionMethod, selectedExplorer]);
+    setIsSaving(true);
+    
+    try {
+      // Call the profile update API with Solana settings
+      await updateProfile({
+        explorer: apiExplorer,
+        connectionMethod: connectionMethod,
+      });
+      
+      setToastMessage('Solana settings saved successfully');
+      setToastType('success');
+      setShowToast(true);
+      
+      // Reload the profile to get the updated data from server
+      await loadProfile();
+      
+      // Navigate back after a longer delay so user can read the message
+      setTimeout(() => {
+        navigation.goBack();
+      }, 2500);
+    } catch (error) {
+      console.error('Failed to save Solana settings:', error);
+      setToastMessage('Failed to save settings. Please try again.');
+      setToastType('error');
+      setShowToast(true);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [connectionMethod, selectedExplorer, updateProfile, navigation]);
 
   const styles = StyleSheet.create({
     container: {
@@ -319,6 +352,9 @@ export default function SolanaSettingsScreen({navigation}: SolanaSettingsScreenP
       lineHeight: 20,
       textAlignVertical: 'center',
     },
+    saveButtonDisabled: {
+      opacity: 0.5,
+    },
   });
 
   const renderRadioTile = (
@@ -426,13 +462,28 @@ export default function SolanaSettingsScreen({navigation}: SolanaSettingsScreenP
 
             {/* Save Button Section */}
             <View style={styles.saveButtonContainer}>
-              <Pressable style={styles.saveButton} onPress={handleSaveChanges}>
-                <Text style={styles.saveButtonText}>Save Changes</Text>
+              <Pressable 
+                style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} 
+                onPress={handleSaveChanges}
+                disabled={isSaving}
+              >
+                <Text style={styles.saveButtonText}>
+                  {isSaving ? 'Saving...' : 'Save Changes'}
+                </Text>
               </Pressable>
             </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      
+      {/* Toast for feedback - show at top to avoid bottom nav */}
+      <Toast
+        message={toastMessage}
+        type={toastType}
+        visible={showToast}
+        onHide={() => setShowToast(false)}
+        position="top"
+      />
     </SafeAreaView>
   );
 }

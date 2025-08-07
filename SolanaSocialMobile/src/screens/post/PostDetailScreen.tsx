@@ -58,6 +58,7 @@ interface PostDetailScreenProps {
     params: {
       postId: string | number;
       post?: Post;
+      postExpansion?: boolean; // Track if this is a post expansion for analytics
     };
   };
 }
@@ -69,6 +70,7 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
   const {connected} = useWalletStore();
   const [post, setPost] = useState<Post | null>(route.params?.post || null);
   const [quotePosts, setQuotePosts] = useState<Post[]>([]);
+  const [quotesLoading, setQuotesLoading] = useState(false);
   const [loading, setLoading] = useState(!post);
   const [refreshing, setRefreshing] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
@@ -128,8 +130,12 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
       if (!postData || refresh) {
         console.log('🔍 PostDetailScreen: Fetching individual post from API:', postId);
         
+        // ENGAGEMENT TRACKING: Include postExpansion parameter if this is a user expansion
+        const isPostExpansion = route.params?.postExpansion === true;
+        console.log('📊 PostDetailScreen: Post expansion tracking:', isPostExpansion);
+        
         try {
-          const response = await socialAPI.getPost(postId.toString());
+          const response = await socialAPI.getPost(postId.toString(), isPostExpansion);
           if (response.post) {
             // Transform the processed_posts response to our Post type
             const transformedPost = transformProcessedPost(response.post);
@@ -159,63 +165,12 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
         }
       }
 
-      // Handle quotes data if available in the post
-      if (postData && postData.quote_details) {
-        // Convert quote_details to Post objects for display
-        const quotePostsFromDetails = postData.quote_details.map((quoteDetail, index) => ({
-          id: `quote-${postId}-${index}`,
-          user_id: quoteDetail.userId,
-          user: {
-            id: quoteDetail.userId,
-            username: quoteDetail.displayName,
-            display_name: quoteDetail.displayName,
-            avatar_url: quoteDetail.avatar,
-            wallet_address: quoteDetail.user,
-            is_verified: false,
-            reputation_score: 0,
-            follower_count: 0,
-            following_count: 0,
-          },
-          message: quoteDetail.quoteMessage,
-          media_urls: [],
-          tags: [],
-          language: '',
-          images: [],
-          video: null,
-          view_count: 0,
-          quote_count: 0,
-          quoted_post: postId.toString(),
-          is_thread: false,
-          previous_thread_post: null,
-          quoted_by: [],
-          quote_details: [],
-          receipts_count: 0,
-          tagged_users: [],
-          transaction_hash: quoteDetail.signature,
-          slot: 0,
-          epoch: 0,
-          username: quoteDetail.displayName,
-          profile_image_url: quoteDetail.avatar,
-          is_username_verified: false,
-          is_profile_verified: false,
-          is_brand: false,
-          post_count: 0,
-          reputation: 0,
-          upvotes_received: 0,
-          downvotes_received: 0,
-          streak: 0,
-          posts_this_epoch: 0,
-          post_number: 0,
-          is_pinned: false,
-          created_at: quoteDetail.createdAt,
-          updated_at: quoteDetail.createdAt,
-          reply_to_post: null,
-          quote_post: null,
-          user_vote: null,
-          user_bookmarked: false,
-        }));
-        
-        setQuotePosts(quotePostsFromDetails);
+      // Load quotes if available using the quotedBy array
+      if (postData && postData.quoted_by && postData.quoted_by.length > 0) {
+        loadQuotes(postData.quoted_by);
+      } else if (postData && postData.quotedBy && postData.quotedBy.length > 0) {
+        // Support both field names (quoted_by and quotedBy)
+        loadQuotes(postData.quotedBy);
       } else {
         setQuotePosts([]);
       }
@@ -261,17 +216,9 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
         console.log('🔍 PostDetailScreen: Navigating to feedStackScreen:', screen, 'with params:', params);
         navigation.navigate(screen as any, params);
       } else if (screen === 'Profile') {
-        // Check which navigator we're in for correct Profile screen
-        const routes = navigation.getState?.()?.routeNames || [];
-        if (routes.includes('UserProfile')) {
-          // We're in FeedNavigator
-          console.log('🔍 PostDetailScreen: Navigating to UserProfile with params:', JSON.stringify(params, null, 2));
-          navigation.navigate('UserProfile', params);
-        } else {
-          // We're in SearchNavigator or other navigator with 'Profile' screen
-          console.log('🔍 PostDetailScreen: Navigating to Profile with params:', JSON.stringify(params, null, 2));
-          navigation.navigate('Profile', params);
-        }
+        // Navigate to Profile screen
+        console.log('🔍 PostDetailScreen: Navigating to Profile from sidebar with params:', JSON.stringify(params, null, 2));
+        navigation.navigate('Profile', params);
       }
     },
     [navigation],
@@ -287,6 +234,38 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
   };
 
   // Handle refresh with callback
+  const loadQuotes = async (quoteSignatures: string[]) => {
+    setQuotesLoading(true);
+    try {
+      console.log('🔍 PostDetailScreen: Loading quotes for post:', { 
+        postId, 
+        quoteCount: quoteSignatures.length,
+        signatures: quoteSignatures.slice(0, 3)
+      });
+      
+      // Fetch the actual posts using the signatures
+      const quotesResponse = await socialAPI.getPostsBySignatures(quoteSignatures);
+      
+      if (quotesResponse?.posts) {
+        // Transform the posts to our Post type
+        const transformedQuotes = quotesResponse.posts.map(transformProcessedPost);
+        setQuotePosts(transformedQuotes);
+        
+        console.log('🔍 PostDetailScreen: Quotes loaded successfully:', {
+          count: transformedQuotes.length
+        });
+      } else {
+        console.log('🔍 PostDetailScreen: No quotes data in response');
+        setQuotePosts([]);
+      }
+    } catch (error) {
+      console.error('Error loading quotes:', error);
+      setQuotePosts([]);
+    } finally {
+      setQuotesLoading(false);
+    }
+  };
+
   const handleRefresh = useCallback(async () => {
     await loadPostDetails(true);
   }, [postId]);
@@ -302,16 +281,16 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
     handleRefreshStateChange(refreshing || loading);
   }, [refreshing, loading, handleRefreshStateChange]);
 
-  const handleUserPress = (userId: number | undefined | null, walletAddress: string) => {
-    // Check if we're in SearchNavigator (has 'Profile' screen) or FeedNavigator (has 'UserProfile' screen)
-    const routes = navigation.getState?.()?.routeNames || [];
-    if (routes.includes('UserProfile')) {
-      // We're in FeedNavigator
-      navigation.navigate('UserProfile', {walletAddress});
-    } else {
-      // We're in SearchNavigator or other navigator with 'Profile' screen
-      navigation.navigate('Profile', {walletAddress});
-    }
+  const handleUserPress = (userId: number | undefined | null, walletAddress: string, postSignature?: string) => {
+    // ENGAGEMENT TRACKING: Include profileVisitFrom for analytics
+    console.log('📊 PostDetailScreen: Tracking profile visit from post:', postSignature);
+    
+    // Navigate to Profile screen
+    console.log('🔍 PostDetailScreen: Navigating to Profile with walletAddress:', walletAddress);
+    navigation.navigate('Profile', {
+      walletAddress, 
+      profileVisitFrom: postSignature // Track visit source
+    });
   };
 
   const handleQuotePress = (quotedPost: Post) => {
@@ -843,7 +822,7 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
                   <Expand size={20} color={colors.primary} />
                 </View>
                 <View style={styles.metricContent}>
-                  <Text style={styles.metricCount}>{(post.post_expansions || 0).toLocaleString()}</Text>
+                  <Text style={styles.metricCount}>{(post.expansions_count || post.expansionsCount || 0).toLocaleString()}</Text>
                   <Text style={styles.metricLabel}>Expansions</Text>
                 </View>
               </Pressable>
@@ -856,7 +835,10 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
               <View style={styles.quotesTitleContainer}>
                 <Text style={styles.quotesTitle}>Quotes</Text>
                 <View style={styles.quotesCountBadge}>
-                  <Text style={styles.quotesCountText}>{quotePosts.length}</Text>
+                  <Text style={styles.quotesCountText}>
+                    {post.quotedByCount || post.quoted_by_count || 
+                     post.quoted_by?.length || post.quotedBy?.length || quotePosts.length || 0}
+                  </Text>
                 </View>
               </View>
               <Pressable 
@@ -867,7 +849,12 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
               </Pressable>
             </View>
 
-            {quotePosts.length === 0 ? (
+            {quotesLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.emptyQuotesCaption, {marginTop: 12}]}>Loading quotes...</Text>
+              </View>
+            ) : quotePosts.length === 0 ? (
               <View style={styles.emptyQuotesContainer}>
                 <Quote size={48} color={colors.mutedForeground} style={{opacity: 0.5}} />
                 <Text style={styles.emptyQuotesTitle}>No quotes yet</Text>

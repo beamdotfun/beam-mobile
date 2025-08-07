@@ -31,7 +31,17 @@ import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 type Props = FeedStackScreenProps<'UserProfile'>;
 
 export default function UserProfileScreen({route, navigation}: Props) {
-  const {walletAddress} = route.params;
+  const {walletAddress: paramWalletAddress, username, profileVisitFrom} = route.params;
+  // Use walletAddress if provided, otherwise use username as the identifier
+  const walletAddress = paramWalletAddress || username || '';
+  
+  console.log('🔍 UserProfileScreen: Params received:', {
+    paramWalletAddress,
+    username,
+    profileVisitFrom,
+    resolvedWalletAddress: walletAddress
+  });
+  
   const {colors} = useThemeStore();
   const {publicKey, connected} = useWalletStore();
   const {upvote, downvote, loading: votingLoading, error: votingError} = useVoting();
@@ -89,10 +99,25 @@ export default function UserProfileScreen({route, navigation}: Props) {
 
   const loadProfile = async () => {
     try {
+      if (!walletAddress) {
+        console.error('🚨 UserProfileScreen: No wallet address available to load profile');
+        setError('No wallet address provided');
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
+      console.log('📊 UserProfileScreen: Loading profile for wallet:', walletAddress);
+      
+      // ENGAGEMENT TRACKING: Log if this visit came from a post
+      if (profileVisitFrom) {
+        console.log('📊 UserProfileScreen: Loading profile with visit tracking from post:', profileVisitFrom);
+      }
+
       // Load user info and initial posts in parallel
+      // Note: getUser doesn't support profileVisitFrom tracking - consider using getUserProfile for full tracking
       const [userData, postsData] = await Promise.all([
         socialAPI.getUser(walletAddress),
         socialAPI.getUserPosts(walletAddress, 20, 0),
@@ -159,6 +184,9 @@ export default function UserProfileScreen({route, navigation}: Props) {
 
   const handlePostPress = useCallback(
     (post: Post) => {
+      // ENGAGEMENT TRACKING: Add postExpansion=true for analytics
+      console.log('📊 UserProfileScreen: Tracking post expansion for engagement metrics');
+      
       // Check if this is a thread root post and route appropriately
       if (post.threadData || post.isThreadRoot || post.threadPostCount > 0) {
         console.log('🧵 UserProfileScreen.handlePostPress: Navigating to thread details for post:', {
@@ -169,20 +197,30 @@ export default function UserProfileScreen({route, navigation}: Props) {
         });
         navigation.navigate('ThreadDetails', {
           threadId: post.signature || post.transactionHash || post.id?.toString(),
-          post: post
+          post: post,
+          postExpansion: true // Track expansion for analytics
         });
       } else {
         console.log('📄 UserProfileScreen.handlePostPress: Navigating to post details for regular post:', post.id);
-        navigation.navigate('PostDetail', {postId: post.id});
+        navigation.navigate('PostDetail', {
+          postId: post.id,
+          postExpansion: true // Track expansion for analytics
+        });
       }
     },
     [navigation],
   );
 
   const handleUserPress = useCallback(
-    (walletAddress: string) => {
+    (userId: number | undefined | null, walletAddress: string, postSignature?: string) => {
+      // ENGAGEMENT TRACKING: Include profileVisitFrom for analytics
+      console.log('📊 UserProfileScreen: Tracking profile visit from post:', postSignature);
+      
       // Navigate to another user's profile
-      navigation.push('UserProfile', {walletAddress});
+      navigation.push('UserProfile', {
+        walletAddress,
+        profileVisitFrom: postSignature // Track where the visit came from
+      });
     },
     [navigation],
   );

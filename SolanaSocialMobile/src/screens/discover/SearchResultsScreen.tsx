@@ -161,8 +161,8 @@ export default function SearchResultsScreen({route, navigation}: Props) {
         tipCount: apiPost.userTipsReceivedCount || 0,
         totalTipAmount: 0,
         isPinned: false,
-        createdAt: apiPost.postProcessedAt || new Date().toISOString(),
-        updatedAt: apiPost.updatedAt || apiPost.postProcessedAt || new Date().toISOString(),
+        createdAt: apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString(),
+        updatedAt: apiPost.updatedAt || apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString(),
         
         user: {
           walletAddress: apiPost.postUser || '',
@@ -205,8 +205,8 @@ export default function SearchResultsScreen({route, navigation}: Props) {
         receipts_count: 0,
         view_count: 0,
         signature: apiPost.postSignature,
-        created_at: apiPost.postProcessedAt,
-        updated_at: apiPost.updatedAt || apiPost.postProcessedAt,
+        created_at: apiPost.processedAt || apiPost.postProcessedAt,
+        updated_at: apiPost.updatedAt || apiPost.processedAt || apiPost.postProcessedAt,
         
         quoted_post: apiPost.postQuotedPost,
         quotedPost: apiPost.postQuotedPost,
@@ -391,26 +391,40 @@ export default function SearchResultsScreen({route, navigation}: Props) {
 
   const handlePostPress = useCallback(
     (post: Post) => {
+      // ENGAGEMENT TRACKING: Add postExpansion=true for analytics
+      console.log('📊 SearchResultsScreen: Tracking post expansion for engagement metrics');
+      
       // Check if this is a thread root post and route appropriately
       if (post.threadData || post.isThreadRoot || post.threadPostCount > 0) {
         console.log('🧵 SearchResultsScreen.handlePostPress: Navigating to thread details for post:', post.id);
         navigation.navigate('ThreadDetails', {
           threadId: post.signature || post.transactionHash || post.id?.toString(),
-          post: post
+          post: post,
+          postExpansion: true // Track expansion for analytics
         });
       } else {
         console.log('📄 SearchResultsScreen.handlePostPress: Navigating to post details for regular post:', post.id);
-        navigation.navigate('PostDetail', {postId: post.transaction_hash || post.signature || post.id, post});
+        navigation.navigate('PostDetail', {
+          postId: post.transaction_hash || post.signature || post.id, 
+          post,
+          postExpansion: true // Track expansion for analytics
+        });
       }
     },
     [navigation],
   );
 
   const handleUserPress = useCallback(
-    (userId: number | undefined | null, walletAddress: string) => {
+    (userId: number | undefined | null, walletAddress: string, postSignature?: string) => {
+      // ENGAGEMENT TRACKING: Include profileVisitFrom for analytics
+      console.log('📊 SearchResultsScreen: Tracking profile visit from post:', postSignature);
+      
       if (walletAddress && walletAddress.trim()) {
         console.log('🔍 SearchResultsScreen.handleUserPress: Navigating to Profile with walletAddress:', walletAddress);
-        navigation.navigate('Profile', {walletAddress});
+        navigation.navigate('Profile', {
+          walletAddress,
+          profileVisitFrom: postSignature // Track where the visit came from
+        });
       }
     },
     [navigation],

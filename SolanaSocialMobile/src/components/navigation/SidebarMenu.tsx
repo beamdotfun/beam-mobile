@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Wifi,
   WifiOff,
+  Coins,
 } from 'lucide-react-native';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Avatar} from '../ui/avatar';
@@ -376,6 +377,15 @@ export function SidebarMenu({visible, onClose, onNavigate}: SidebarMenuProps) {
       onPress: () => {
         Vibration.vibrate(10);
         onNavigate('Watchlist');
+        onClose();
+      },
+    },
+    {
+      icon: Coins,
+      label: 'Tokens',
+      onPress: () => {
+        Vibration.vibrate(10);
+        onNavigate('Tokens');
         onClose();
       },
     },

@@ -1,4 +1,4 @@
-import { Transaction, VersionedTransaction } from '@solana/web3.js';
+import { Transaction } from '@solana/web3.js';
 import { SolanaMobileWalletAdapter } from '../wallet/adapter';
 import { API_CONFIG } from '../../config/api';
 
@@ -120,18 +120,11 @@ export class BlockchainTransactionService {
     
     if (this.getAuthToken) {
       const token = this.getAuthToken();
-      console.log('🔍 Auth token available:', !!token);
-      console.log('🔍 Auth token length:', token?.length || 0);
-      console.log('🔍 Auth token preview:', token ? `${token.substring(0, 20)}...` : 'null');
-      
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
-    } else {
-      console.log('🔍 No getAuthToken function available');
     }
     
-    console.log('🔍 Final headers:', Object.keys(headers));
     return headers;
   }
 
@@ -153,47 +146,25 @@ export class BlockchainTransactionService {
       for (const txInfo of buildResponse.transactions) {
         console.log(`🔄 Processing ${txInfo.type} transaction...`);
         
-        // Deserialize transaction - handle both Legacy and Versioned transactions
+        // Deserialize transaction from base64
         const transactionBuffer = Buffer.from(txInfo.transaction, 'base64');
-        let transaction: Transaction | VersionedTransaction;
+        const transaction = Transaction.from(transactionBuffer);
         
-        try {
-          // Try to deserialize as VersionedTransaction first (modern format)
-          transaction = VersionedTransaction.deserialize(transactionBuffer);
-          console.log('🔍 Deserialized as VersionedTransaction');
-        } catch (error) {
-          try {
-            // Fall back to Legacy Transaction format
-            transaction = Transaction.from(transactionBuffer);
-            console.log('🔍 Deserialized as Legacy Transaction');
-          } catch (legacyError) {
-            console.error('❌ Failed to deserialize transaction as either format:', error, legacyError);
-            throw new Error(`Failed to deserialize transaction: ${error.message}`);
-          }
-        }
-
-        // Sign transaction with mobile wallet adapter
-        console.log('🔍 About to sign transaction:', {
-          type: transaction instanceof VersionedTransaction ? 'VersionedTransaction' : 'LegacyTransaction',
-          serializedLength: transaction.serialize({ requireAllSignatures: false }).length
-        });
+        console.log('📄 Deserialized transaction details:');
+        console.log('   - Instructions:', transaction.instructions.length);
+        console.log('   - Recent blockhash:', transaction.recentBlockhash);
+        console.log('   - Fee payer:', transaction.feePayer?.toString());
         
-        let signedTransaction;
-        try {
-          signedTransaction = await this.walletAdapter.signTransaction(transaction);
-          console.log('✅ Transaction signed successfully');
-        } catch (signingError) {
-          console.error('❌ Transaction signing failed:', signingError);
-          console.error('❌ Error details:', {
-            message: signingError.message,
-            stack: signingError.stack,
-            name: signingError.name
-          });
-          throw signingError;
-        }
-
+        // IMPORTANT: The transaction is already prepared, just sign it
+        const signedTransaction = await this.walletAdapter.signTransaction(transaction);
+        console.log('✅ Got signed transaction back from wallet');
+        console.log('   - Signatures:', signedTransaction.signatures.length);
+        console.log('   - First signature valid:', signedTransaction.signatures[0] !== null);
+        
         // Submit signed transaction to Beam API
+        console.log('📤 About to submit to backend...');
         const result = await this.submitSignedTransaction(signedTransaction);
+        console.log('✅ Backend submission complete');
         
         signatures.push(result.signature);
         totalFee += result.fee || 0;
@@ -245,29 +216,23 @@ export class BlockchainTransactionService {
       // Step 1: Build create-user transaction via API
       const buildResponse = await this.buildCreateUserTransaction(params);
       
-      // Step 2: Deserialize transaction - handle both Legacy and Versioned transactions
+      // Step 2: Deserialize transaction from base64
       const transactionBuffer = Buffer.from(buildResponse.transaction, 'base64');
-      let transaction: Transaction | VersionedTransaction;
+      const transaction = Transaction.from(transactionBuffer);
       
-      try {
-        // Try to deserialize as VersionedTransaction first (modern format)
-        transaction = VersionedTransaction.deserialize(transactionBuffer);
-        console.log('🔍 Deserialized as VersionedTransaction');
-      } catch (error) {
-        try {
-          // Fall back to Legacy Transaction format
-          transaction = Transaction.from(transactionBuffer);
-          console.log('🔍 Deserialized as Legacy Transaction');
-        } catch (legacyError) {
-          console.error('❌ Failed to deserialize transaction as either format:', error, legacyError);
-          throw new Error(`Failed to deserialize transaction: ${error.message}`);
-        }
-      }
+      console.log('📄 Deserialized user creation transaction details:');
+      console.log('   - Instructions:', transaction.instructions.length);
+      console.log('   - Recent blockhash:', transaction.recentBlockhash);
+      console.log('   - Fee payer:', transaction.feePayer?.toString());
 
       // Step 3: Sign transaction with mobile wallet adapter
       const signedTransaction = await this.walletAdapter.signTransaction(transaction);
+      console.log('✅ Got signed transaction back from wallet');
+      console.log('   - Signatures:', signedTransaction.signatures.length);
+      console.log('   - First signature valid:', signedTransaction.signatures[0] !== null);
 
       // Step 4: Submit signed transaction to Beam API
+      console.log('📤 Submitting user creation transaction to backend...');
       const result = await this.submitSignedTransaction(signedTransaction);
       
       console.log('✅ Create user transaction completed successfully!');
@@ -297,48 +262,25 @@ export class BlockchainTransactionService {
       
       // Step 2: Process the vote transaction
       const txInfo = buildResponse.transactions[0];
+      console.log(`🔄 Processing ${txInfo.type} transaction...`);
       
-      // Deserialize transaction - handle both Legacy and Versioned transactions
+      // Deserialize transaction from base64
       const transactionBuffer = Buffer.from(txInfo.transaction, 'base64');
-      let transaction: Transaction | VersionedTransaction;
+      const transaction = Transaction.from(transactionBuffer);
       
-      try {
-        // Try to deserialize as VersionedTransaction first (modern format)
-        transaction = VersionedTransaction.deserialize(transactionBuffer);
-        console.log('🔍 Deserialized as VersionedTransaction');
-      } catch (error) {
-        try {
-          // Fall back to Legacy Transaction format
-          transaction = Transaction.from(transactionBuffer);
-          console.log('🔍 Deserialized as Legacy Transaction');
-        } catch (legacyError) {
-          console.error('❌ Failed to deserialize transaction as either format:', error, legacyError);
-          throw new Error(`Failed to deserialize transaction: ${error.message}`);
-        }
-      }
+      console.log('📄 Deserialized vote transaction details:');
+      console.log('   - Instructions:', transaction.instructions.length);
+      console.log('   - Recent blockhash:', transaction.recentBlockhash);
+      console.log('   - Fee payer:', transaction.feePayer?.toString());
 
       // Sign transaction with mobile wallet adapter
-      console.log('🔍 About to sign vote transaction:', {
-        type: transaction instanceof VersionedTransaction ? 'VersionedTransaction' : 'LegacyTransaction',
-        serializedLength: transaction.serialize({ requireAllSignatures: false }).length,
-        voteType: params.voteType
-      });
-      
-      let signedTransaction;
-      try {
-        signedTransaction = await this.walletAdapter.signTransaction(transaction);
-        console.log('✅ Vote transaction signed successfully');
-      } catch (signingError) {
-        console.error('❌ Vote transaction signing failed:', signingError);
-        console.error('❌ Vote signing error details:', {
-          message: signingError.message,
-          stack: signingError.stack,
-          name: signingError.name
-        });
-        throw signingError;
-      }
+      const signedTransaction = await this.walletAdapter.signTransaction(transaction);
+      console.log('✅ Got signed transaction back from wallet');
+      console.log('   - Signatures:', signedTransaction.signatures.length);
+      console.log('   - First signature valid:', signedTransaction.signatures[0] !== null);
 
       // Submit signed transaction to Beam API
+      console.log('📤 Submitting vote transaction to backend...');
       const result = await this.submitSignedTransaction(signedTransaction);
       
       console.log('✅ Create vote transaction completed successfully!');
@@ -410,9 +352,7 @@ export class BlockchainTransactionService {
       `${this.apiBaseUrl}/blockchain/transactions/build/create-post`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getAuthHeaders(),
         body: JSON.stringify({
           userWallet: params.userWallet,
           message: params.message,
@@ -447,9 +387,7 @@ export class BlockchainTransactionService {
       `${this.apiBaseUrl}/blockchain/transactions/build/create-user`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getAuthHeaders(),
         body: JSON.stringify({
           userWallet: params.userWallet,
           computeUnits: params.computeUnits || 400000,
@@ -482,9 +420,7 @@ export class BlockchainTransactionService {
       `${this.apiBaseUrl}/blockchain/transactions/build/create-vote`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getAuthHeaders(),
         body: JSON.stringify({
           voterWallet: params.voterWallet,
           targetWallet: params.targetWallet,
@@ -514,45 +450,66 @@ export class BlockchainTransactionService {
   /**
    * Submits a signed transaction to Beam API for execution
    */
-  private async submitSignedTransaction(signedTransaction: Transaction | VersionedTransaction): Promise<TransactionResponse> {
-    // Serialize the signed transaction
-    const serializedTx = signedTransaction.serialize();
-    const base64Transaction = Buffer.from(serializedTx).toString('base64');
-
+  private async submitSignedTransaction(signedTransaction: Transaction): Promise<TransactionResponse> {
+    console.log('🔍 submitSignedTransaction called');
+    
+    // Try to serialize - if it fails due to signature format, try fixing it
+    let base64Transaction;
+    try {
+      console.log('🔍 Attempting to serialize...');
+      const serialized = signedTransaction.serialize();
+      base64Transaction = Buffer.from(serialized).toString('base64');
+      console.log('✅ Serialization successful');
+    } catch (error) {
+      console.log('❌ Initial serialization failed:', error.message);
+      // If serialize fails, the signature might be in wrong format
+      // Try to fix it by converting object signatures to Buffer
+      if (signedTransaction.signatures && signedTransaction.signatures.length > 0) {
+        console.log('🔍 Signature details:', {
+          count: signedTransaction.signatures.length,
+          firstSig: signedTransaction.signatures[0],
+          firstSigType: typeof signedTransaction.signatures[0],
+          isNull: signedTransaction.signatures[0] === null,
+          isObject: typeof signedTransaction.signatures[0] === 'object',
+          keys: signedTransaction.signatures[0] ? Object.keys(signedTransaction.signatures[0]) : 'null'
+        });
+        signedTransaction.signatures = signedTransaction.signatures.map((sig: any) => {
+          if (sig && typeof sig === 'object' && sig.signature !== undefined) {
+            // signature might be null, string, or buffer
+            if (sig.signature === null) {
+              return null;
+            } else if (typeof sig.signature === 'string') {
+              return Buffer.from(sig.signature, 'base64');
+            } else if (sig.signature instanceof Uint8Array) {
+              return Buffer.from(sig.signature);
+            } else if (Buffer.isBuffer(sig.signature)) {
+              return sig.signature;
+            }
+          }
+          return sig;
+        });
+      }
+      // Try again
+      console.log('🔍 Retrying serialization after fixing signatures...');
+      const serialized = signedTransaction.serialize();
+      base64Transaction = Buffer.from(serialized).toString('base64');
+      console.log('✅ Serialization successful after fix');
+    }
+    
+    console.log('🔍 Sending to backend:', `${this.apiBaseUrl}/blockchain/transactions/submit`);
     const response = await fetch(
       `${this.apiBaseUrl}/blockchain/transactions/submit`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getAuthHeaders(),
         body: JSON.stringify({
           transaction: base64Transaction,
         }),
       }
     );
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.details || `Failed to submit transaction: ${response.statusText}`);
-    }
-
     const result = await response.json();
-    
-    // Handle new standardized response format
-    if (result.success === false) {
-      throw new Error(result.error || result.details || 'Failed to submit transaction');
-    }
-    
-    // Extract data from the standardized format
-    const data = result.data || result;
-    
-    // If transaction was submitted but not confirmed, poll for status
-    if (data.status === 'submitted' && data.signature) {
-      return await this.pollTransactionStatus(data.signature);
-    }
-
-    return data;
+    return result.data || result;
   }
 
   /**
@@ -562,7 +519,10 @@ export class BlockchainTransactionService {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const response = await fetch(
-          `${this.apiBaseUrl}/blockchain/transactions/${signature}/status`
+          `${this.apiBaseUrl}/blockchain/transactions/${signature}/status`,
+          {
+            headers: this.getAuthHeaders(),
+          }
         );
         
         if (response.ok) {
@@ -605,49 +565,32 @@ export class BlockchainTransactionService {
       const buildResponse = await this.buildCreateTipTransaction(params);
       
       // Step 2: Process the tip transaction
-      const txInfo = buildResponse.transactions[0];
+      // Handle both single transaction and array format for compatibility
+      const txInfo = buildResponse.transactions ? buildResponse.transactions[0] : buildResponse;
       
-      // Deserialize transaction - handle both Legacy and Versioned transactions
-      const transactionBuffer = Buffer.from(txInfo.transaction, 'base64');
-      let transaction: Transaction | VersionedTransaction;
-      
-      try {
-        // Try to deserialize as VersionedTransaction first (modern format)
-        transaction = VersionedTransaction.deserialize(transactionBuffer);
-        console.log('🔍 Deserialized as VersionedTransaction');
-      } catch (error) {
-        try {
-          // Fall back to Legacy Transaction format
-          transaction = Transaction.from(transactionBuffer);
-          console.log('🔍 Deserialized as Legacy Transaction');
-        } catch (legacyError) {
-          console.error('❌ Failed to deserialize transaction as either format:', error, legacyError);
-          throw new Error(`Failed to deserialize transaction: ${error.message}`);
-        }
+      if (!txInfo || !txInfo.transaction) {
+        throw new Error('Invalid transaction response from API');
       }
+      
+      console.log(`🔄 Processing ${txInfo.type || 'tip'} transaction...`);
+      
+      // Deserialize transaction from base64
+      const transactionBuffer = Buffer.from(txInfo.transaction, 'base64');
+      const transaction = Transaction.from(transactionBuffer);
+      
+      console.log('📄 Deserialized tip transaction details:');
+      console.log('   - Instructions:', transaction.instructions.length);
+      console.log('   - Recent blockhash:', transaction.recentBlockhash);
+      console.log('   - Fee payer:', transaction.feePayer?.toString());
 
       // Sign transaction with mobile wallet adapter
-      console.log('🔍 About to sign tip transaction:', {
-        type: transaction instanceof VersionedTransaction ? 'VersionedTransaction' : 'LegacyTransaction',
-        serializedLength: transaction.serialize({ requireAllSignatures: false }).length,
-        amount: params.amount
-      });
-      
-      let signedTransaction;
-      try {
-        signedTransaction = await this.walletAdapter.signTransaction(transaction);
-        console.log('✅ Tip transaction signed successfully');
-      } catch (signingError) {
-        console.error('❌ Tip transaction signing failed:', signingError);
-        console.error('❌ Tip signing error details:', {
-          message: signingError.message,
-          stack: signingError.stack,
-          name: signingError.name
-        });
-        throw signingError;
-      }
+      const signedTransaction = await this.walletAdapter.signTransaction(transaction);
+      console.log('✅ Got signed transaction back from wallet');
+      console.log('   - Signatures:', signedTransaction.signatures.length);
+      console.log('   - First signature valid:', signedTransaction.signatures[0] !== null);
 
       // Submit signed transaction to Beam API
+      console.log('📤 Submitting tip transaction to backend...');
       const result = await this.submitSignedTransaction(signedTransaction);
       
       console.log('✅ Create tip transaction completed successfully!');
@@ -698,47 +641,12 @@ export class BlockchainTransactionService {
       // Step 2: Process the verification transaction
       const transactionString = buildResponse.transaction;
       
-      // Deserialize transaction - handle both Legacy and Versioned transactions
+      // Deserialize transaction from base64
       const transactionBuffer = Buffer.from(transactionString, 'base64');
-      let transaction: Transaction | VersionedTransaction;
-      
-      try {
-        // Try to deserialize as VersionedTransaction first (modern format)
-        transaction = VersionedTransaction.deserialize(transactionBuffer);
-        console.log('🔍 Deserialized as VersionedTransaction');
-      } catch (error) {
-        try {
-          // Fall back to Legacy Transaction format
-          transaction = Transaction.from(transactionBuffer);
-          console.log('🔍 Deserialized as Legacy Transaction');
-        } catch (legacyError) {
-          console.error('❌ Failed to deserialize transaction as either format:', error, legacyError);
-          throw new Error(`Failed to deserialize transaction: ${error.message}`);
-        }
-      }
+      const transaction = Transaction.from(transactionBuffer);
 
       // Sign transaction with mobile wallet adapter
-      console.log('🔍 About to sign verification transaction:', {
-        type: transaction instanceof VersionedTransaction ? 'VersionedTransaction' : 'LegacyTransaction',
-        serializedLength: transaction.serialize({ requireAllSignatures: false }).length,
-        caller: params.callerWallet,
-        target: params.targetUser,
-        verificationType: params.verificationType
-      });
-      
-      let signedTransaction;
-      try {
-        signedTransaction = await this.walletAdapter.signTransaction(transaction);
-        console.log('✅ Verification transaction signed successfully');
-      } catch (signingError) {
-        console.error('❌ Verification transaction signing failed:', signingError);
-        console.error('❌ Verification signing error details:', {
-          message: signingError.message,
-          stack: signingError.stack,
-          name: signingError.name
-        });
-        throw signingError;
-      }
+      const signedTransaction = await this.walletAdapter.signTransaction(transaction);
 
       // Submit signed transaction to Beam API
       const result = await this.submitSignedTransaction(signedTransaction);
@@ -781,45 +689,70 @@ export class BlockchainTransactionService {
    * @private
    */
   private async buildCreateTipTransaction(params: CreateTipTransactionParams): Promise<BuildTransactionMultiResponse> {
+    console.log('📡 Building create-tip transaction with API...');
+    const requestBody = {
+      senderWallet: params.senderWallet,
+      receiverWallet: params.receiverWallet,
+      amount: params.amount,
+      message: params.message,
+      computeUnits: params.computeUnits || 250000,
+      priorityFee: params.priorityFee || 1000
+    };
+    
+    console.log('📝 Request body:', requestBody);
+    console.log('🌐 API URL:', `${this.apiBaseUrl}/blockchain/transactions/build/create-tip`);
+    
+    const headers = this.getAuthHeaders();
+    console.log('🔑 Auth headers:', {
+      hasAuth: !!headers['Authorization'],
+      contentType: headers['Content-Type']
+    });
+    
     try {
-      console.log('🔧 Building create-tip transaction...');
-      
-      const requestBody = {
-        senderWallet: params.senderWallet,
-        receiverWallet: params.receiverWallet,
-        amount: params.amount,
-        message: params.message,
-        computeUnits: params.computeUnits || 250000,  // Default to 250,000 as per spec
-        priorityFee: params.priorityFee || 1000
-      };
-      
-      console.log('📤 Tip transaction request:', requestBody);
-      
       const response = await fetch(`${this.apiBaseUrl}/blockchain/transactions/build/create-tip`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify(requestBody),
       });
 
+      console.log('📡 API Response status:', response.status);
+      
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to build create-tip transaction: ${response.status} ${errorText}`);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ API Error response:', errorData);
+        throw new Error(errorData.error || errorData.details || `Failed to build create-tip transaction: ${response.status}`);
       }
 
       const result = await response.json();
-      console.log('✅ Create-tip transaction built successfully');
+      console.log('✅ API Response received:', {
+        success: result.success,
+        hasData: !!result.data,
+        hasTransactions: !!(result.data?.transactions || result.transactions),
+        transactionCount: (result.data?.transactions || result.transactions)?.length,
+        dataKeys: result.data ? Object.keys(result.data) : [],
+        hasTransaction: !!(result.data?.transaction || result.transaction)
+      });
+      
+      // Log the actual structure for debugging
+      if (result.data) {
+        console.log('📦 Response data structure:', {
+          keys: Object.keys(result.data),
+          hasTransaction: !!result.data.transaction,
+          hasTransactions: !!result.data.transactions,
+          transactionType: result.data.type
+        });
+      }
       
       // Handle new standardized response format
       if (result.success === false) {
+        console.error('❌ API returned success=false:', result);
         throw new Error(result.error || result.details || 'Failed to build create-tip transaction');
       }
       
       // Extract data from the standardized format
       return result.data || result;
     } catch (error) {
-      console.error('❌ Failed to build create-tip transaction:', error);
+      console.error('❌ buildCreateTipTransaction failed:', error);
       throw error;
     }
   }
@@ -828,37 +761,24 @@ export class BlockchainTransactionService {
    * Builds an update-verification transaction via Beam API
    */
   private async buildUpdateVerificationTransaction(params: UpdateVerificationTransactionParams): Promise<UpdateVerificationResponse> {
-    console.log('🔍 Building update-verification transaction with params:', params);
-    console.log('🔍 Using API URL:', `${this.apiBaseUrl}/blockchain/transactions/build/update-verification`);
-    
-    const requestBody = {
-      targetUser: params.targetUser,
-      verificationType: params.verificationType,
-      domainName: params.domainName,
-      callerWallet: params.callerWallet,
-      computeUnits: params.computeUnits || 250000,  // Default to 250,000 as per backend spec
-      priorityFee: params.priorityFee || 1,         // Default to 1 micro-lamport as per backend spec
-    };
-    
-    console.log('🔍 Update-verification request body:', requestBody);
-    
     const response = await fetch(
       `${this.apiBaseUrl}/blockchain/transactions/build/update-verification`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          targetUser: params.targetUser,
+          verificationType: params.verificationType,
+          domainName: params.domainName,
+          callerWallet: params.callerWallet,
+          computeUnits: params.computeUnits || 250000,
+          priorityFee: params.priorityFee || 1,
+        }),
       }
     );
-
-    console.log('🔍 Update-verification response status:', response.status);
-    console.log('🔍 Update-verification response ok:', response.ok);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.log('🔍 Update-verification error data:', errorData);
       throw new Error(errorData.error || errorData.details || `Failed to build update-verification transaction: ${response.status} ${response.statusText}`);
     }
 
@@ -879,7 +799,10 @@ export class BlockchainTransactionService {
   async checkUserExists(userWallet: string): Promise<boolean> {
     try {
       const response = await fetch(
-        `${this.apiBaseUrl}/blockchain/transactions/build/create-user/accounts?userWallet=${userWallet}`
+        `${this.apiBaseUrl}/blockchain/transactions/build/create-user/accounts?userWallet=${userWallet}`,
+        {
+          headers: this.getAuthHeaders(),
+        }
       );
       
       if (response.ok) {

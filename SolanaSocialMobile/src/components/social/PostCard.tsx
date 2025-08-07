@@ -1,6 +1,8 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {View, Text, Pressable, Modal, StyleSheet, Dimensions, ScrollView, SafeAreaView, Clipboard, Linking} from 'react-native';
+import {useNavigation} from '@react-navigation/native';
 import FastImage from 'react-native-fast-image';
+import Video from 'react-native-video';
 import {formatDistanceToNow} from 'date-fns';
 import {
   Quote,
@@ -25,18 +27,20 @@ import {SimpleCommentsSection} from './SimpleCommentsSection';
 import {useThemeStore} from '../../store/themeStore';
 import {useSocialAdvancedStore} from '../../store/socialAdvancedStore';
 import {useReceiptsStore} from '../../store/receiptsStore';
+import {useAuthStore} from '../../store/auth';
 import {AnimatedScore} from '../ui/AnimatedScore';
 import {Post} from '../../types/social';
-import SimpleTipModal from './SimpleTipModal';
+import {TipUserButton} from './TipUserButton';
 import {Toast} from '../ui/Toast';
 import {getUserProfilePicture} from '../../utils/profileUtils';
+import {socialAPI} from '../../services/api/social';
 
 const {width: screenWidth} = Dimensions.get('window');
 
 interface PostCardProps {
   post: Post;
   onPress?: () => void;
-  onUserPress?: (userId: number | undefined | null, walletAddress: string) => void;
+  onUserPress?: (userId: number | undefined | null, walletAddress: string, postSignature?: string) => void; // Added postSignature for tracking
   onHashtagPress?: (hashtag: string) => void;
   onQuotePress?: (post: Post) => void;
   onThreadPress?: (post: Post) => void;
@@ -61,19 +65,55 @@ export function PostCard({
   feedContext = 'default',
 }: PostCardProps) {
   const {colors} = useThemeStore();
-  const [tipModalVisible, setTipModalVisible] = useState(false);
+  const {user} = useAuthStore();
+  const navigation = useNavigation();
   const [showShareModal, setShowShareModal] = useState(false);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [showMoreModal, setShowMoreModal] = useState(false);
   const [commentCount, setCommentCount] = useState(post.replyCount || 0);
   const [toastMessage, setToastMessage] = useState('');
+  
+  // Video player states
+  const [isVideoPlaying, setIsVideoPlaying] = useState(true); // Autoplay by default
+  const [isVideoMuted, setIsVideoMuted] = useState(true); // Muted by default for autoplay
+  const [showVideoControls, setShowVideoControls] = useState(false);
+  const videoRef = useRef(null);
   const [toastType, setToastType] = useState<
     'success' | 'error' | 'warning' | 'info'
   >('info');
   const [showToast, setShowToast] = useState(false);
+  const [resolvedMentions, setResolvedMentions] = useState<Map<string, any>>(new Map());
   
   const {sharePost, comments} = useSocialAdvancedStore();
   const {addReceipt, removeReceipt, isPostReceipted, checkReceiptStatus} = useReceiptsStore();
+
+  // Resolve mentions when the post loads for better performance
+  useEffect(() => {
+    const resolveMentionsInPost = async () => {
+      if (!post.message) return;
+      
+      // Extract mentions from post content
+      const mentionMatches = post.message.match(/@[\w.]+/g);
+      if (!mentionMatches || mentionMatches.length === 0) return;
+      
+      try {
+        const uniqueMentions = [...new Set(mentionMatches.map(m => m.slice(1)))]; // Remove @ symbol
+        const resolution = await socialAPI.resolveMentions(uniqueMentions);
+        
+        const mentionMap = new Map();
+        resolution.resolvedMentions.forEach(resolved => {
+          mentionMap.set(resolved.originalMention, resolved);
+        });
+        
+        setResolvedMentions(mentionMap);
+        console.log('🔗 PostCard: Pre-resolved mentions for post:', post.id, 'count:', mentionMap.size);
+      } catch (error) {
+        console.error('❌ PostCard: Error pre-resolving mentions:', error);
+      }
+    };
+
+    resolveMentionsInPost();
+  }, [post.message, post.id]);
   
   // Get post signature for receipts with validation
   const getValidPostSignature = () => {
@@ -112,7 +152,8 @@ export function PostCard({
 
   // Safe date formatting with fallback for invalid dates
   const getFormattedTime = () => {
-    const dateString = post.created_at || post.createdAt;
+    // Use processedAt as the primary date field (when the post was processed by backend)
+    const dateString = post.processedAt || post.created_at || post.createdAt;
     if (!dateString) {
       return 'Unknown time';
     }
@@ -137,7 +178,8 @@ export function PostCard({
   const userWallet = post.user?.wallet_address || post.user?.walletAddress || post.userWallet || post.userPubkey || '';
   
   // Brand vs User display logic per FEED_INTEGRATION_GUIDE.md
-  const isBrandUser = post.user?.is_brand && post.user?.brand_name;
+  // Use direct API fields from processed_posts structure
+  const isBrandUser = post.userIsBrand || post.user?.is_brand || false;
   
   // Debug logging for user data mismatch - only log if there's something suspicious
   if (!post.user || !userWallet) {
@@ -160,16 +202,15 @@ export function PostCard({
     });
   }
   
-  // Get display name - prioritize brandName over displayName when userIsBrand=true
-  const displayName = (isBrandUser ? post.user.brand_name : null) ||
+  // Get display name - use displayName from processed_posts structure
+  const displayName = post.displayName || 
     post.user?.display_name || post.user?.name || 
     post.user?.username || post.username || 
     (userWallet ? `${userWallet.slice(0, 5)}...${userWallet.slice(-5)}` : 'Unknown');
   
-  // Get avatar URL with brand prioritization - prioritize user object over post-level fields
-  const avatarUrl = isBrandUser && post.user?.brand_logo_url 
-    ? post.user.brand_logo_url
-    : (post.user ? getUserProfilePicture(post.user) : getUserProfilePicture(post));
+  // Get avatar URL - use userProfileImageUri from processed_posts structure
+  const avatarUrl = post.userProfileImageUri || 
+    (post.user ? getUserProfilePicture(post.user) : getUserProfilePicture(post));
   
   // Debug logging for profile pictures
   if (!avatarUrl) {
@@ -184,14 +225,14 @@ export function PostCard({
   }
   
   // Get reputation score with brand prioritization
-  let reputationScore = isBrandUser && post.user?.brand_reputation 
-    ? post.user.brand_reputation 
-    : (post.user?.reputation_score || post.reputation || 0);
+  let reputationScore = isBrandUser && post.brandReputation !== undefined
+    ? post.brandReputation 
+    : (post.userReputation || post.user?.reputation_score || post.reputation || 0);
   
   // Get verification status with brand prioritization
   const isVerified = isBrandUser 
-    ? post.user?.brand_is_verified 
-    : post.user?.is_verified;
+    ? post.brandIsVerified
+    : (post.userIsVerifiedNft || post.userIsVerifiedSns || post.user?.is_verified);
   
   // Debug logging removed - too verbose
   
@@ -433,6 +474,23 @@ export function PostCard({
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: 8,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    video: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 8,
+    },
+    videoOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.3)',
     },
     playButton: {
       width: 60,
@@ -441,6 +499,32 @@ export function PostCard({
       backgroundColor: 'rgba(0, 0, 0, 0.7)',
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    pauseIcon: {
+      flexDirection: 'row',
+      width: 20,
+      height: 24,
+      justifyContent: 'space-between',
+    },
+    pauseBar: {
+      width: 6,
+      height: 24,
+      backgroundColor: '#FFFFFF',
+      borderRadius: 2,
+    },
+    muteButton: {
+      position: 'absolute',
+      bottom: 10,
+      right: 10,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    muteIcon: {
+      fontSize: 16,
     },
     twoImageContainer: {
       flexDirection: 'row',
@@ -567,6 +651,39 @@ export function PostCard({
       color: colors.mutedForeground,
       fontFamily: 'Inter-Regular',
     },
+    quotedPostMediaContainer: {
+      marginTop: 8,
+      borderRadius: 8,
+      overflow: 'hidden',
+    },
+    quotedPostSingleImage: {
+      width: '100%',
+      height: 120,
+      borderRadius: 8,
+    },
+    quotedPostImageScroll: {
+      flexDirection: 'row',
+    },
+    quotedPostMultipleImage: {
+      width: 100,
+      height: 100,
+      marginRight: 8,
+      borderRadius: 6,
+    },
+    quotedPostVideoIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 8,
+      padding: 8,
+      backgroundColor: colors.muted,
+      borderRadius: 6,
+    },
+    quotedPostVideoText: {
+      marginLeft: 6,
+      fontSize: 12,
+      color: colors.mutedForeground,
+      fontFamily: 'Inter-Regular',
+    },
     actions: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -654,6 +771,20 @@ export function PostCard({
       color: colors.mutedForeground,
       fontFamily: 'Inter-Regular',
       opacity: 0.7,
+    },
+    brandBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginLeft: 2,
+      marginTop: -10,
+    },
+    brandBadgeText: {
+      fontSize: 9,
+      fontWeight: '700',
+      fontFamily: 'Inter-Bold',
+      letterSpacing: 0.5,
     },
   });
 
@@ -769,8 +900,31 @@ export function PostCard({
         return;
       }
       
-      // For now, default to Solscan. In the future, this could be user-configurable
-      const explorerUrl = `https://solscan.io/tx/${postSignature}`;
+      // Get user's preferred explorer or default to solscan
+      const userExplorer = user?.explorer || 'solscan';
+      
+      // Generate the appropriate explorer URL based on user preference
+      let explorerUrl: string;
+      switch (userExplorer) {
+        case 'solana-fm':
+        case 'solanafm':
+          explorerUrl = `https://solana.fm/tx/${postSignature}`;
+          break;
+        case 'solana.com':
+        case 'solanacom':
+          explorerUrl = `https://explorer.solana.com/tx/${postSignature}`;
+          break;
+        case 'solscan':
+        default:
+          explorerUrl = `https://solscan.io/tx/${postSignature}`;
+          break;
+      }
+      
+      console.log('🔍 PostCard: Opening explorer with user preference:', {
+        userExplorer,
+        explorerUrl
+      });
+      
       const canOpen = await Linking.canOpenURL(explorerUrl);
       
       if (canOpen) {
@@ -793,22 +947,34 @@ export function PostCard({
       return <Text style={styles.postText}>No content</Text>;
     }
     
-    const parts = content.split(/(@\w+|#\w+)/g);
+    const parts = content.split(/(@[\w.]+|#\w+)/g);
 
     return (
       <Text style={styles.postText}>
         {parts.map((part, index) => {
           if (part.startsWith('@')) {
-            const username = part.slice(1);
+            const mentionText = part.slice(1); // Remove @ symbol
+            
             return (
               <Text
                 key={`mention-${index}-${part}`}
                 style={styles.mentionText}
                 onPress={() => {
-                  // For mentions, we only have username, not userId/walletAddress
-                  // This needs to be handled differently - perhaps navigate to search
-                  console.log('🔍 PostCard.mention: Clicked on mention:', username);
-                  // TODO: Implement proper mention navigation
+                  console.log('🔍 PostCard.mention: Clicked on mention:', mentionText);
+                  
+                  // Use pre-resolved mention data for instant navigation
+                  const resolvedMention = resolvedMentions.get(mentionText);
+                  
+                  if (resolvedMention?.walletAddress) {
+                    console.log('🔗 PostCard.mention: Using pre-resolved mention to wallet:', resolvedMention.walletAddress);
+                    // Navigate to the user's profile with engagement tracking
+                    const postSignature = post.signature || post.transactionHash || post.id?.toString();
+                    onUserPress?.(undefined, resolvedMention.walletAddress, postSignature);
+                  } else {
+                    console.log('⚠️ PostCard.mention: No pre-resolved data for mention:', mentionText);
+                    // Could show a toast or navigate to search as fallback
+                    // For now, just log - we could implement search navigation here
+                  }
                 }}>
                 {part}
               </Text>
@@ -837,12 +1003,93 @@ export function PostCard({
 
   const renderMedia = () => {
     
-    if (hasVideo) {
+    if (hasVideo && post.video) {
+      // Test with a known working video URL to debug issues
+      const TEST_VIDEO_URL = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+      const useTestVideo = false; // Set to true to test with known working video
+      const videoUrl = useTestVideo ? TEST_VIDEO_URL : post.video;
+      
+      console.log('🎥 Rendering video component with URL:', videoUrl);
+      console.log('🎥 Video URL protocol:', videoUrl.startsWith('https://') ? 'HTTPS' : videoUrl.startsWith('http://') ? 'HTTP' : 'Other');
+      console.log('🎥 Using test video:', useTestVideo);
+      
       return (
-        <Pressable style={styles.videoContainer}>
-          <View style={styles.playButton}>
-            <Play size={30} color="#FFFFFF" fill="#FFFFFF" />
-          </View>
+        <Pressable 
+          style={styles.videoContainer}
+          onPress={() => {
+            console.log('🎥 Video container pressed. Current state:', {
+              isPlaying: isVideoPlaying,
+              isMuted: isVideoMuted,
+              videoUrl: post.video
+            });
+            // Toggle play/pause on tap
+            setIsVideoPlaying(!isVideoPlaying);
+            // Show controls briefly when tapped
+            setShowVideoControls(true);
+            setTimeout(() => setShowVideoControls(false), 3000);
+          }}>
+          <Video
+            ref={videoRef}
+            source={{ uri: videoUrl }}
+            style={styles.video}
+            paused={!isVideoPlaying}
+            muted={isVideoMuted}
+            repeat={true} // Loop the video
+            resizeMode="cover"
+            onError={(error) => {
+              console.error('🎥 Video playback error:', {
+                error,
+                videoUrl: post.video,
+                errorDetails: JSON.stringify(error),
+              });
+              showToastMessage('Video failed to load', 'error');
+            }}
+            onLoad={(data) => {
+              console.log('🎥 Video loaded successfully:', {
+                duration: data.duration,
+                naturalSize: data.naturalSize,
+                videoUrl: post.video,
+              });
+            }}
+            onBuffer={(buffer) => {
+              console.log('🎥 Video buffering:', buffer.isBuffering);
+            }}
+            onLoadStart={() => {
+              console.log('🎥 Video load started:', post.video);
+            }}
+            ignoreSilentSwitch="ignore" // Continue playing when phone is on silent
+            playInBackground={false}
+            playWhenInactive={false}
+            controls={false} // We'll use custom controls
+          />
+          
+          {/* Show play/pause overlay when paused or controls visible */}
+          {(!isVideoPlaying || showVideoControls) && (
+            <View style={styles.videoOverlay}>
+              <View style={styles.playButton}>
+                {isVideoPlaying ? (
+                  <View style={styles.pauseIcon}>
+                    <View style={styles.pauseBar} />
+                    <View style={styles.pauseBar} />
+                  </View>
+                ) : (
+                  <Play size={30} color="#FFFFFF" fill="#FFFFFF" />
+                )}
+              </View>
+            </View>
+          )}
+          
+          {/* Mute/Unmute button in corner */}
+          <Pressable 
+            style={styles.muteButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              setIsVideoMuted(!isVideoMuted);
+            }}>
+            <Text style={styles.muteIcon}>
+              {isVideoMuted ? '🔇' : '🔊'}
+            </Text>
+          </Pressable>
         </Pressable>
       );
     }
@@ -963,13 +1210,17 @@ export function PostCard({
         (quotedPost.userIsVerifiedNft || quotedPost.userIsVerifiedSns);
       
       const quotedMessage = quotedPost.postMessage;
+      const quotedImages = quotedPost.postImages || [];
+      const quotedHasVideo = !!quotedPost.postVideo;
 
       console.log('🔍 PostCard.renderQuotedPost: Rendering quoted post data:', {
         quotedDisplayName,
         quotedMessage: quotedMessage?.substring(0, 50) + '...',
         quotedUserWallet: quotedUserWallet?.substring(0, 20) + '...',
         quotedProfilePicture: !!quotedProfilePicture,
-        quotedIsVerified
+        quotedIsVerified,
+        quotedImagesCount: quotedImages.length,
+        quotedHasVideo
       });
 
       return (
@@ -1001,6 +1252,42 @@ export function PostCard({
           <Text style={styles.quotedPostText} numberOfLines={3}>
             {quotedMessage}
           </Text>
+          
+          {/* Display quoted post images */}
+          {quotedImages.length > 0 && (
+            <View style={styles.quotedPostMediaContainer}>
+              {quotedImages.length === 1 ? (
+                <FastImage
+                  source={{uri: quotedImages[0]}}
+                  style={styles.quotedPostSingleImage}
+                  resizeMode={FastImage.resizeMode.cover}
+                />
+              ) : (
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.quotedPostImageScroll}
+                >
+                  {quotedImages.map((image, index) => (
+                    <FastImage
+                      key={index}
+                      source={{uri: image}}
+                      style={styles.quotedPostMultipleImage}
+                      resizeMode={FastImage.resizeMode.cover}
+                    />
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          )}
+          
+          {/* Display quoted post video indicator */}
+          {quotedHasVideo && !quotedImages.length && (
+            <View style={styles.quotedPostVideoIndicator}>
+              <Play size={16} color={colors.mutedForeground} />
+              <Text style={styles.quotedPostVideoText}>Video</Text>
+            </View>
+          )}
         </Pressable>
       );
     }
@@ -1075,9 +1362,14 @@ export function PostCard({
                   'Final userId': userId
                 });
                 console.log('🔍 PostCard.userPress: Full post.user object:', JSON.stringify(post.user, null, 2));
+                
+                // ENGAGEMENT TRACKING: Include postSignature for profile visit tracking
+                console.log('📊 PostCard: Tracking profile visit from post:', postSignature || post.id);
+                
                 // Call onUserPress if we have a wallet address (userId is optional for protocol-only users)
                 if (userWallet && userWallet.trim() !== '') {
-                  onUserPress?.(userId, userWallet); // userId can be undefined/null for protocol users
+                  // Pass the post signature for engagement tracking
+                  onUserPress?.(userId, userWallet, postSignature || post.id?.toString()); // Added postSignature param
                 } else {
                   console.log('🚨 PostCard.userPress: No valid wallet address - not calling onUserPress', {userId, userWallet});
                 }
@@ -1087,9 +1379,9 @@ export function PostCard({
                 src={avatarUrl}
                 fallback={displayName.charAt(0)}
                 size="md"
-                showRing={post.is_profile_verified || post.user?.is_verified}
-                ringColor={colors.success}
-                shape={post.is_brand || post.user?.is_brand ? 'square' : 'circle'}
+                showRing={isVerified}
+                ringColor={isBrandUser && post.brandIsVerified ? '#10b981' : colors.success}
+                shape={isBrandUser ? 'square' : 'circle'}
               />
 
               <View style={styles.userInfo}>
@@ -1160,6 +1452,24 @@ export function PostCard({
 
                 <View style={styles.pinnedRow}>
                   <Text style={styles.metaText}>{formattedTime}</Text>
+                  {isBrandUser && (
+                    <>
+                      <Text style={styles.metaText}> • </Text>
+                      <View style={[
+                        styles.brandBadge, 
+                        {
+                          backgroundColor: post.brandIsVerified ? '#10b981' : '#6b7280',
+                          borderColor: post.brandIsVerified ? '#10b981' : '#6b7280',
+                        }
+                      ]}>
+                        <Text style={[styles.brandBadgeText, {
+                          color: '#ffffff'
+                        }]}>
+                          {post.brandIsVerified ? 'VERIFIED' : 'BRAND'}
+                        </Text>
+                      </View>
+                    </>
+                  )}
                   {(post.is_pinned || post.isPinned) && (
                     <>
                       <Text style={styles.metaText}> • </Text>
@@ -1175,7 +1485,10 @@ export function PostCard({
           </View>
 
           {/* Content */}
-          <Pressable onPress={onPress}>
+          <Pressable onPress={() => {
+            console.log('📊 PostCard: Tracking post expansion for:', postSignature || post.id);
+            onPress?.(); // This will trigger navigation with postExpansion tracking
+          }}>
             <View style={styles.content}>
               {/* Thread Indicator - Enhanced per FEED_INTEGRATION_GUIDE.md */}
               {(post.threadData || post.isThreadRoot || showThreadPill) && (
@@ -1252,7 +1565,10 @@ export function PostCard({
               {/* Open Post Details */}
               {!hideExpandButton && (
                 <Pressable
-                  onPress={onPress}
+                  onPress={() => {
+                    console.log('📊 PostCard: Tracking post expansion via chevron for:', postSignature || post.id);
+                    onPress?.(); // This will trigger navigation with postExpansion tracking
+                  }}
                   style={styles.actionButton}>
                   <ChevronRight size={20} color={colors.mutedForeground} />
                 </Pressable>
@@ -1407,16 +1723,7 @@ export function PostCard({
         </SafeAreaView>
       </Modal>
 
-      {/* Tip Modal */}
-      <SimpleTipModal
-        visible={tipModalVisible}
-        onClose={() => setTipModalVisible(false)}
-        receiverWallet={userWallet || 'Unknown'}
-        receiverName={displayName}
-        onSuccess={() => {
-          showToastMessage('Tip sent successfully!', 'success');
-        }}
-      />
+      {/* Tip Modal replaced with screen navigation via TipUserButton */}
 
       {/* Toast Messages */}
       <Toast

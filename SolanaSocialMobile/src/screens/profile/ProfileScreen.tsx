@@ -59,6 +59,7 @@ interface ProfileScreenProps {
   route: {
     params?: {
       walletAddress?: string;
+      profileVisitFrom?: string; // Track where the profile visit came from
     };
   };
 }
@@ -101,13 +102,17 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
                            user?.walletAddress ||
                            user?.wallet_address; // Add wallet_address for compatibility with PostCard
   
+  // Get wallet address from route params
   const routeWalletAddress = route.params?.walletAddress;
   
   // Debug the route params types and values
   console.log('🔍 ProfileScreen DEBUG: Raw route params types:', {
     'typeof walletAddress': typeof route.params?.walletAddress,
     'walletAddress value': route.params?.walletAddress,
-    'walletAddress length': route.params?.walletAddress?.length
+    'walletAddress length': route.params?.walletAddress?.length,
+    'typeof username': typeof route.params?.username,
+    'username value': route.params?.username,
+    'resolved routeWalletAddress': routeWalletAddress
   });
   
   // Fixed logic: Show own profile if no route param OR if wallet addresses match
@@ -131,8 +136,8 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
     
     setRefreshing(true);
     try {
-      // Reload profile data
-      await loadProfile(routeWalletAddress);
+      // Reload profile data with tracking parameter
+      await loadProfile(routeWalletAddress, route.params?.profileVisitFrom);
       
       // Reload user posts
       if (targetWalletAddress) {
@@ -280,8 +285,12 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
       useProfileStore.setState({ currentProfile: null, userPosts: [], socialStats: null });
     }
     
-    // Load profile data
-    loadProfile(routeWalletAddress).then(() => {
+    // Load profile data with tracking parameter
+    const profileVisitFrom = route.params?.profileVisitFrom;
+    if (profileVisitFrom) {
+      console.log('📊 ProfileScreen: Loading profile with visit tracking from post:', profileVisitFrom);
+    }
+    loadProfile(routeWalletAddress, profileVisitFrom).then(() => {
       console.log('🔍 ProfileScreen: loadProfile completed successfully');
     }).catch(error => {
       console.error('🚨 ProfileScreen: Error loading profile:', error);

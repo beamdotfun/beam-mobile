@@ -31,6 +31,15 @@ const transformApiPost = (apiPost: any): Post => {
       allFields: Object.keys(apiPost).slice(0, 10) // Show first 10 fields
     });
   }
+  
+  // Debug video field specifically
+  if (apiPost.postVideo) {
+    console.log('🎥 SocialStore.transformApiPost: Video found in post:', {
+      postId: apiPost.id,
+      videoUrl: apiPost.postVideo,
+      feedType: apiPost.feedType || 'unknown',
+    });
+  }
 
   // Brand vs User prioritization logic per FEED_INTEGRATION_GUIDE.md
   const shouldUseBrandInfo = apiPost.userIsBrand && apiPost.brandName;
@@ -78,8 +87,8 @@ const transformApiPost = (apiPost: any): Post => {
     tipCount: apiPost.userTipsReceivedCount || 0,
     totalTipAmount: 0, // Will be calculated from tip data if available
     isPinned: false, // Will be updated when pin data is available
-    createdAt: apiPost.postProcessedAt || new Date().toISOString(),
-    updatedAt: apiPost.updatedAt || apiPost.postProcessedAt || new Date().toISOString(),
+    createdAt: apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString(),
+    updatedAt: apiPost.updatedAt || apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString(),
     
     // User object with brand prioritization
     user: {
@@ -128,8 +137,8 @@ const transformApiPost = (apiPost: any): Post => {
     receipts_count: 0, // Will be updated when receipt count is available
     view_count: 0, // Will be updated when view count is available
     signature: apiPost.postSignature, // Use postSignature from processed_posts
-    created_at: apiPost.postProcessedAt,
-    updated_at: apiPost.updatedAt || apiPost.postProcessedAt,
+    created_at: apiPost.processedAt || apiPost.postProcessedAt,
+    updated_at: apiPost.updatedAt || apiPost.processedAt || apiPost.postProcessedAt,
     
     // Quote post data - from processed_posts structure
     quoted_post: apiPost.postQuotedPost,
@@ -252,8 +261,20 @@ export const useSocialStore = create<SocialState>((set, get) => ({
         dataExists: !!response?.data,
         dataLength: Array.isArray(response?.data) ? response.data.length : 'not array',
         paginationExists: !!response?.pagination,
-        feedType: response?.feedType
+        feedType: response?.feedType,
+        requestedFeedType: activeFeedType,
+        videoPosts: response?.data ? response.data.filter((p: any) => !!p.postVideo).length : 0
       });
+      
+      // Debug videos specifically in Recent feed
+      if (activeFeedType === 'recent' && response?.data) {
+        const videoPosts = response.data.filter((p: any) => !!p.postVideo);
+        console.log('🎥 SocialStore: Recent feed video check:', {
+          totalPosts: response.data.length,
+          postsWithVideo: videoPosts.length,
+          videoUrls: videoPosts.map((p: any) => ({ id: p.id, video: p.postVideo }))
+        });
+      }
 
       // Handle new response format: { data: Post[], pagination: {...}, feedType: string }
       const postsArray = response.data || [];

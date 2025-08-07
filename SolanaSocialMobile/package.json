@@ -44,6 +44,7 @@
     "react-native-screens": "^3.29.0",
     "react-native-svg": "^13.14.1",
     "react-native-tab-view": "^4.1.2",
+    "react-native-video": "^6.16.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^3.4.17",
     "zustand": "^5.0.6"

@@ -168,15 +168,31 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   fetchBalance: async () => {
     const {publicKey} = get();
     if (!publicKey) {
+      console.log('🔍 WalletStore: Cannot fetch balance - no public key');
       return;
     }
 
     try {
-      // Mock balance for now - in real implementation this would query Solana RPC
-      const mockBalance = Math.random() * 10 + 1; // 1-11 SOL
-      set({balance: mockBalance});
+      console.log('🔍 WalletStore: Fetching SOL balance for:', publicKey.toString().slice(0, 8) + '...');
+      
+      // Use Solana RPC to get real balance
+      const connection = new (await import('@solana/web3.js')).Connection(
+        'https://api.mainnet-beta.solana.com', // Mainnet RPC
+        'confirmed'
+      );
+      
+      const balance = await connection.getBalance(publicKey);
+      const solBalance = balance / 1000000000; // Convert lamports to SOL
+      
+      console.log('✅ WalletStore: Balance fetched:', {
+        lamports: balance,
+        sol: solBalance.toFixed(4)
+      });
+      
+      set({balance: solBalance});
     } catch (error) {
-      console.error('Failed to fetch balance:', error);
+      console.error('❌ WalletStore: Failed to fetch balance:', error);
+      // Don't set balance to null on error, keep the previous value
     }
   },
 }));

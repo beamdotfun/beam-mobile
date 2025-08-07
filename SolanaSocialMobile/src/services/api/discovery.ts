@@ -241,9 +241,9 @@ class DiscoveryAPI {
           ...entry,
           
           // Add computed fields for compatibility with existing UI
-          id: `${type}-${entry.rank}-${entry.owner || entry.address}`,
-          walletAddress: entry.owner,
-          displayName: entry.displayName || entry.username || (entry.owner ? `${entry.owner.slice(0, 4)}...${entry.owner.slice(-4)}` : 'Unknown'),
+          id: `${type}-${entry.rank}-${entry.walletAddress}`,
+          walletAddress: entry.walletAddress, // Use the actual walletAddress field from API
+          displayName: entry.displayName || entry.username || (entry.walletAddress ? `${entry.walletAddress.slice(0, 4)}...${entry.walletAddress.slice(-4)}` : 'Unknown'),
           totalReputation: entry.reputation,
           gainThisEpoch: entry.scoreThisEpoch,
           totalPosts: entry.postsThisEpoch || 0, // Use current epoch posts as fallback

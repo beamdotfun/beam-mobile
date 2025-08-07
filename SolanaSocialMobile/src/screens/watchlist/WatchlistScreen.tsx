@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {Users, Search, Zap, Plus} from 'lucide-react-native';
+import {Users, Search, Zap, Plus, Coins} from 'lucide-react-native';
 import {Avatar} from '../../components/ui/avatar';
 import {AppNavBar} from '../../components/navigation/AppNavBar';
 import {SidebarMenu} from '../../components/navigation/SidebarMenu';
@@ -54,12 +54,19 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
     loadWatchlistMembers,
     refreshWatchlist,
   } = useWatchlist();
-  
+
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
   // Local state for optimistic updates
-  const [localFollowingList, setLocalFollowingList] = useState<WatchlistUser[]>([]);
+  const [localFollowingList, setLocalFollowingList] = useState<WatchlistUser[]>(
+    [],
+  );
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'users' | 'tokens'>('users');
 
   // Load watchlist users on mount - use setTimeout to not block initial render
   useEffect(() => {
@@ -82,11 +89,16 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
   }, [refreshWatchlist]);
 
   // Enhanced refresh with haptic feedback
-  const { enhancedOnRefresh, tintColor: refreshTintColor, colors: refreshColors, handleRefreshStateChange } = useEnhancedRefresh({
+  const {
+    enhancedOnRefresh,
+    tintColor: refreshTintColor,
+    colors: refreshColors,
+    handleRefreshStateChange,
+  } = useEnhancedRefresh({
     onRefresh: handleRefresh,
-    tintColor: colors.primary
+    tintColor: colors.primary,
   });
-  
+
   // Track refresh state changes for haptic feedback
   useEffect(() => {
     handleRefreshStateChange(refreshing || loading);
@@ -98,11 +110,10 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
       const timer = setTimeout(() => {
         setStatusMessage(null);
       }, 10000);
-      
+
       return () => clearTimeout(timer);
     }
   }, [statusMessage]);
-
 
   const handleUserPress = useCallback(
     (walletAddress: string) => {
@@ -111,31 +122,45 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
     [navigation],
   );
 
-  const handleSidebarNavigate = useCallback((screen: string, params?: any) => {
-    setSidebarVisible(false); // Close sidebar first
-    
-    // Screens that exist in Feed tab
-    const feedTabScreens = [
-      'Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
-      'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
-      'Posts', 'Receipts', 'Watchlist', 'Points', 'Business', 'HelpCenter'
-    ];
-    
-    if (feedTabScreens.includes(screen)) {
-      // Navigate to Feed tab first, then to the specific screen
-      const parent = navigation.getParent();
-      if (parent) {
-        parent.navigate('Feed', {
-          screen: screen,
-          params: params
-        });
+  const handleSidebarNavigate = useCallback(
+    (screen: string, params?: any) => {
+      setSidebarVisible(false); // Close sidebar first
+
+      // Screens that exist in Feed tab
+      const feedTabScreens = [
+        'Settings',
+        'GeneralSettings',
+        'EmailSettings',
+        'PasswordSettings',
+        'FeedSettings',
+        'WalletSettings',
+        'SolanaSettings',
+        'BadgesSettings',
+        'Posts',
+        'Receipts',
+        'Watchlist',
+        'Points',
+        'Business',
+        'HelpCenter',
+      ];
+
+      if (feedTabScreens.includes(screen)) {
+        // Navigate to Feed tab first, then to the specific screen
+        const parent = navigation.getParent();
+        if (parent) {
+          parent.navigate('Feed', {
+            screen: screen,
+            params: params,
+          });
+        }
+      } else if (screen === 'Profile') {
+        navigation.navigate('UserProfile', params);
+      } else {
+        console.log(`Navigate to ${screen}`, params);
       }
-    } else if (screen === 'Profile') {
-      navigation.navigate('UserProfile', params);
-    } else {
-      console.log(`Navigate to ${screen}`, params);
-    }
-  }, [navigation]);
+    },
+    [navigation],
+  );
 
   const handleCreatePost = useCallback(() => {
     navigation.navigate('CreatePost');
@@ -150,10 +175,10 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
     });
   };
 
@@ -398,6 +423,76 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
     statusMessageTextInfo: {
       color: colors.primary,
     },
+    tabBar: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 12,
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    tabButton: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 8,
+      marginHorizontal: 4,
+      borderRadius: 8,
+    },
+    tabButtonActive: {
+      backgroundColor: colors.primary + '15',
+    },
+    tabButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    tabIcon: {
+      marginRight: 6,
+    },
+    tabText: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.mutedForeground,
+      fontFamily: 'Inter-Medium',
+    },
+    tabTextActive: {
+      color: colors.primary,
+      fontWeight: '600',
+      fontFamily: 'Inter-SemiBold',
+    },
+    tabIndicator: {
+      position: 'absolute',
+      bottom: 0,
+      height: 2,
+      backgroundColor: colors.primary,
+      borderRadius: 1,
+    },
+    comingSoonContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    comingSoonTitleContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+      gap: 12,
+    },
+    comingSoonTitle: {
+      fontSize: 24,
+      fontWeight: '600',
+      color: colors.foreground,
+      fontFamily: 'Inter-SemiBold',
+    },
+    comingSoonText: {
+      fontSize: 16,
+      color: colors.mutedForeground,
+      textAlign: 'center',
+      lineHeight: 24,
+      fontFamily: 'Inter-Regular',
+      paddingHorizontal: 20,
+    },
   });
 
   const renderUserCard = ({item}: {item: WatchlistUser}) => {
@@ -407,11 +502,13 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
         onPress={handleUserPress}
         onDelete={() => {
           // Optimistically remove from local state
-          const updatedList = followingList.filter(user => user.walletAddress !== item.walletAddress);
+          const updatedList = followingList.filter(
+            user => user.walletAddress !== item.walletAddress,
+          );
           // Update the store's following list
           useWatchlist.setState({
             followingList: updatedList,
-            followingCount: updatedList.length
+            followingCount: updatedList.length,
           });
         }}
         statusMessage={setStatusMessage}
@@ -463,65 +560,143 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
     );
   }
 
+  const renderTokensComingSoon = () => (
+    <View style={styles.comingSoonContainer}>
+      <View style={styles.comingSoonTitleContainer}>
+        <Coins size={32} color={colors.foreground} />
+        <Text style={styles.comingSoonTitle}>Coming Soon</Text>
+      </View>
+      <Text style={styles.comingSoonText}>
+        Track your favorite tokens and get notified about price movements
+      </Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppNavBar
         title="Watchlist"
-        subtitle={localFollowingList.length > 0 ? 
-          `${localFollowingList.length} ${localFollowingList.length === 1 ? 'person' : 'people'}` : 
-          undefined
+        subtitle={
+          activeTab === 'users' && localFollowingList.length > 0
+            ? `${localFollowingList.length} ${
+                localFollowingList.length === 1 ? 'person' : 'people'
+              }`
+            : undefined
         }
         onProfilePress={() => setSidebarVisible(true)}
         onNewPostPress={handleCreatePost}
       />
 
+      {/* Tab Bar */}
+      <View style={styles.tabBar}>
+        <Pressable
+          style={[
+            styles.tabButton,
+            activeTab === 'users' && styles.tabButtonActive,
+          ]}
+          onPress={() => setActiveTab('users')}>
+          <View style={styles.tabButtonContent}>
+            <Users
+              size={18}
+              color={
+                activeTab === 'users' ? colors.primary : colors.mutedForeground
+              }
+              style={styles.tabIcon}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'users' && styles.tabTextActive,
+              ]}>
+              Users
+            </Text>
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.tabButton,
+            activeTab === 'tokens' && styles.tabButtonActive,
+          ]}
+          onPress={() => setActiveTab('tokens')}>
+          <View style={styles.tabButtonContent}>
+            <Coins
+              size={18}
+              color={
+                activeTab === 'tokens' ? colors.primary : colors.mutedForeground
+              }
+              style={styles.tabIcon}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'tokens' && styles.tabTextActive,
+              ]}>
+              Tokens
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+
       {/* Status Message */}
-      {statusMessage && (
-        <View style={[
-          styles.statusMessage,
-          statusMessage.type === 'success' && styles.statusMessageSuccess,
-          statusMessage.type === 'error' && styles.statusMessageError,
-          statusMessage.type === 'info' && styles.statusMessageInfo,
-        ]}>
-          <Text style={[
-            styles.statusMessageText,
-            statusMessage.type === 'success' && styles.statusMessageTextSuccess,
-            statusMessage.type === 'error' && styles.statusMessageTextError,
-            statusMessage.type === 'info' && styles.statusMessageTextInfo,
+      {statusMessage && activeTab === 'users' && (
+        <View
+          style={[
+            styles.statusMessage,
+            statusMessage.type === 'success' && styles.statusMessageSuccess,
+            statusMessage.type === 'error' && styles.statusMessageError,
+            statusMessage.type === 'info' && styles.statusMessageInfo,
           ]}>
+          <Text
+            style={[
+              styles.statusMessageText,
+              statusMessage.type === 'success' &&
+                styles.statusMessageTextSuccess,
+              statusMessage.type === 'error' && styles.statusMessageTextError,
+              statusMessage.type === 'info' && styles.statusMessageTextInfo,
+            ]}>
             {statusMessage.message}
           </Text>
         </View>
       )}
 
-      <FlatList
-        style={styles.content}
-        data={followingList}
-        renderItem={renderUserCard}
-        keyExtractor={(item) => item.walletAddress}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={enhancedOnRefresh}
-            tintColor={colors.primary} // iOS spinner color
-            colors={[colors.primary, colors.secondary]} // Android spinner colors  
-            progressBackgroundColor={colors.card} // Android background
-            progressViewOffset={0} // Normal positioning
-            size="default"
-            title="Pull to refresh" // iOS title
-            titleColor={colors.mutedForeground} // iOS title color
-          />
-        }
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          followingList.length === 0 
-            ? (loading ? renderLoadingState : renderEmptyState)
-            : null
-        }
-        contentContainerStyle={
-          followingList.length === 0 ? {flex: 1} : {paddingTop: 16, paddingBottom: 16}
-        }
-      />
+      {/* Conditional Content Based on Active Tab */}
+      {activeTab === 'users' ? (
+        <FlatList
+          style={styles.content}
+          data={followingList}
+          renderItem={renderUserCard}
+          keyExtractor={item => item.walletAddress}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={enhancedOnRefresh}
+              tintColor={colors.primary} // iOS spinner color
+              colors={[colors.primary, colors.secondary]} // Android spinner colors
+              progressBackgroundColor={colors.card} // Android background
+              progressViewOffset={0} // Normal positioning
+              size="default"
+              title="Pull to refresh" // iOS title
+              titleColor={colors.mutedForeground} // iOS title color
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            followingList.length === 0
+              ? loading
+                ? renderLoadingState
+                : renderEmptyState
+              : null
+          }
+          contentContainerStyle={
+            followingList.length === 0
+              ? {flex: 1}
+              : {paddingTop: 16, paddingBottom: 16}
+          }
+        />
+      ) : (
+        renderTokensComingSoon()
+      )}
 
       <SidebarMenu
         visible={sidebarVisible}

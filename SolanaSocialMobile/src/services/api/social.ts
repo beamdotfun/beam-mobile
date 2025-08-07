@@ -1,4 +1,5 @@
-import api from './client';
+import api, {getAuthToken} from './client';
+import {API_CONFIG} from '../../config/api';
 import {
   ApiResponse,
   PaginatedResponse,
@@ -54,6 +55,197 @@ export class SocialAPIService {
       throw new Error(response.problem);
     }
     return response.data!.data;
+  }
+
+  async getUserNFTs(walletAddress: string): Promise<any> {
+    console.log('🖼️ Fetching NFTs for wallet:', walletAddress);
+    const response = await api.get<ApiResponse<any>>(
+      `/wallets/${walletAddress}/nfts`,
+    );
+    
+    if (!response.ok) {
+      console.error('Failed to fetch NFTs:', response.problem);
+      throw new Error(response.problem || 'Failed to fetch NFTs');
+    }
+    
+    console.log('🖼️ NFTs response:', {
+      count: response.data?.data?.count,
+      success: response.data?.success,
+    });
+    
+    return response.data!.data;
+  }
+
+  async uploadMedia(file: any, type: 'image' | 'video' = 'image'): Promise<{url: string}> {
+    // Use native fetch for multipart upload to correct endpoints
+    try {
+      const formData = new FormData();
+      
+      // Prepare file object with proper fields
+      const fileToUpload = {
+        uri: file.uri,
+        type: file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
+        name: file.fileName || file.name || `media.${type === 'video' ? 'mp4' : 'jpg'}`,
+      };
+      
+      console.log('📤 Uploading media:', {
+        type,
+        file: fileToUpload,
+      });
+      
+      // Use correct field names based on type
+      if (type === 'video') {
+        formData.append('video', fileToUpload as any);
+      } else {
+        formData.append('image', fileToUpload as any);
+      }
+      
+      // Add optional fields
+      formData.append('description', 'Post attachment');
+      if (file.fileName || file.name) {
+        formData.append('name', file.fileName || file.name);
+      }
+
+      // Build headers with auth token
+      const headers: any = {};
+      const authToken = getAuthToken();
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+      
+      // Use correct endpoints based on type
+      const endpoint = type === 'video' ? '/user/videos/upload' : '/user/user-images';
+      const fullUrl = `${API_CONFIG.BASE_URL}${endpoint}`;
+      
+      console.log('📤 Making upload request to:', fullUrl);
+      
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers,
+        body: formData,
+        credentials: 'include',
+      });
+      
+      const responseData = await response.json();
+      
+      console.log('📤 Media upload response:', {
+        ok: response.ok,
+        status: response.status,
+        data: responseData,
+      });
+      
+      if (!response.ok) {
+        if (response.status === 413) {
+          throw new Error(
+            type === 'video' 
+              ? 'Video too large. Maximum size is 100MB.' 
+              : 'Image too large. Maximum size is 10MB.'
+          );
+        } else if (response.status === 415) {
+          throw new Error('Invalid file type. Please use supported formats.');
+        } else if (response.status === 401) {
+          throw new Error('Authentication required. Please log in.');
+        }
+        throw new Error(responseData?.message || 'Upload failed');
+      }
+      
+      // Extract media URL from response based on type
+      const mediaUrl = type === 'video' 
+        ? responseData?.data?.videoUrl
+        : responseData?.data?.imageUrl;
+      
+      if (!mediaUrl) {
+        console.error('📤 No media URL in response:', responseData);
+        throw new Error('Invalid response from server - no media URL');
+      }
+      
+      console.log('📤 Successfully uploaded media:', mediaUrl);
+      return { url: mediaUrl };
+    } catch (error: any) {
+      console.error('📤 Media upload error:', error);
+      throw error;
+    }
+  }
+
+  async uploadProfilePicture(file: any): Promise<{profilePicture: string}> {
+    // Use native fetch for multipart upload to avoid Content-Type issues
+    try {
+      // Create FormData
+      const formData = new FormData();
+      
+      // React Native image picker returns an object with these properties
+      // Ensure we have all required fields for the file object
+      const fileToUpload = {
+        uri: file.uri,
+        type: file.type || 'image/jpeg',
+        name: file.fileName || file.name || 'profile.jpg',
+      };
+      
+      console.log('📸 Preparing to upload profile picture:', fileToUpload);
+      
+      // Append the file to FormData
+      formData.append('profilePicture', fileToUpload as any);
+
+      // Build headers with auth token if available
+      const headers: any = {};
+      const authToken = getAuthToken();
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+      
+      // Use fetch directly for multipart upload
+      // Do NOT set Content-Type header - let fetch set it automatically with boundary
+      console.log('📸 Making upload request to:', `${API_CONFIG.BASE_URL}/user/profile/picture`);
+      
+      const response = await fetch(`${API_CONFIG.BASE_URL}/user/profile/picture`, {
+        method: 'POST',
+        headers,
+        body: formData,
+        credentials: 'include', // Include cookies for authentication
+      });
+      
+      const responseData = await response.json();
+      
+      console.log('📸 Upload response:', {
+        ok: response.ok,
+        status: response.status,
+        data: responseData,
+      });
+      
+      if (!response.ok) {
+        // Handle specific error codes
+        if (response.status === 413) {
+          throw new Error('File too large. Maximum size is 5MB.');
+        } else if (response.status === 415) {
+          throw new Error('Invalid file type. Please use JPEG, PNG, or WebP.');
+        } else if (response.status === 401) {
+          throw new Error('Authentication required. Please log in.');
+        }
+        throw new Error(responseData?.message || 'Upload failed');
+      }
+      
+      // Check various possible paths for the profile picture URL
+      // Based on actual API response: { success: true, user: { profilePicture: "..." } }
+      const profilePictureUrl = 
+        responseData?.user?.profilePicture ||
+        responseData?.data?.profilePicture ||
+        responseData?.data?.profile_picture ||
+        responseData?.profilePicture ||
+        responseData?.profile_picture ||
+        responseData?.url ||
+        responseData?.imageUrl;
+      
+      if (!profilePictureUrl) {
+        console.error('📸 No profile picture URL in response:', responseData);
+        throw new Error('Invalid response from server - no profile picture URL');
+      }
+      
+      console.log('📸 Successfully extracted profile picture URL:', profilePictureUrl);
+      return { profilePicture: profilePictureUrl };
+    } catch (error: any) {
+      console.error('📸 Upload error:', error);
+      throw error;
+    }
   }
 
   // Posts - Updated to use new processed_posts backend feed endpoints
@@ -247,10 +439,17 @@ export class SocialAPIService {
   }
 
   // Get individual post with processed_posts structure
-  async getPost(postId: string): Promise<any> {
-    console.log('🔍 SocialAPI.getPost: Fetching individual post with processed_posts structure:', { postId });
+  async getPost(postId: string, postExpansion?: boolean): Promise<any> {
+    console.log('🔍 SocialAPI.getPost: Fetching individual post with processed_posts structure:', { postId, postExpansion });
     
-    const response = await api.get<any>(`/social/posts/${postId}`);
+    // ENGAGEMENT TRACKING: Include postExpansion parameter if tracking expansion
+    const params: any = {};
+    if (postExpansion === true) {
+      params.postExpansion = true;
+      console.log('📊 SocialAPI.getPost: Including postExpansion=true for engagement tracking');
+    }
+    
+    const response = await api.get<any>(`/social/posts/${postId}`, params);
     if (!response.ok) {
       throw new Error(response.problem);
     }
@@ -324,10 +523,17 @@ export class SocialAPIService {
   }
 
   // Get complete thread with processed_posts structure
-  async getThreadPosts(postSignature: string): Promise<any> {
-    console.log('🔍 SocialAPI.getThreadPosts: Fetching thread with processed_posts structure:', { postSignature });
+  async getThreadPosts(postSignature: string, postExpansion?: boolean): Promise<any> {
+    console.log('🔍 SocialAPI.getThreadPosts: Fetching thread with processed_posts structure:', { postSignature, postExpansion });
     
-    const response = await api.get<any>(`/social/threads/${postSignature}`);
+    // ENGAGEMENT TRACKING: Include postExpansion parameter if tracking expansion
+    const params: any = {};
+    if (postExpansion === true) {
+      params.postExpansion = true;
+      console.log('📊 SocialAPI.getThreadPosts: Including postExpansion=true for engagement tracking');
+    }
+    
+    const response = await api.get<any>(`/social/threads/${postSignature}`, params);
     if (!response.ok) {
       throw new Error(response.problem);
     }
@@ -445,6 +651,29 @@ export class SocialAPIService {
       receiptStatuses,
       count: receiptStatuses.length
     };
+  }
+
+  // Get multiple posts by their signatures - for loading quotes
+  async getPostsBySignatures(signatures: string[]): Promise<any> {
+    console.log('🔍 SocialAPI.getPostsBySignatures: Fetching posts by signatures:', { 
+      count: signatures.length,
+      signatures: signatures.slice(0, 5).map(s => `${s.slice(0, 12)}...`) // Log first 5 abbreviated
+    });
+    
+    const response = await api.post<any>('/posts/batch', {
+      signatures: signatures.slice(0, 50) // Limit to 50 posts
+    });
+
+    if (!response.ok) {
+      throw new Error(response.problem);
+    }
+
+    console.log('🔍 SocialAPI.getPostsBySignatures: Response received:', {
+      success: response.data?.success,
+      postsCount: response.data?.data?.posts?.length || 0
+    });
+
+    return response.data?.data;
   }
 
   // Receipt/Bookmark functionality per FEED_INTEGRATION_GUIDE.md
@@ -578,10 +807,17 @@ export class SocialAPIService {
   }
 
   // Profile Management - Get public profile by wallet address
-  async getUserProfile(walletAddress: string): Promise<any> {
-    console.log('🔍 SocialAPI.getUserProfile: Called with walletAddress:', walletAddress);
+  async getUserProfile(walletAddress: string, profileVisitFrom?: string): Promise<any> {
+    console.log('🔍 SocialAPI.getUserProfile: Called with walletAddress:', walletAddress, 'profileVisitFrom:', profileVisitFrom);
     
-    const response = await api.get<ApiResponse<any>>(`/api/v1/wallet/${walletAddress}/profile`);
+    // ENGAGEMENT TRACKING: Include profileVisitFrom parameter if tracking visit source
+    const params: any = {};
+    if (profileVisitFrom) {
+      params.profileVisitFrom = profileVisitFrom;
+      console.log('📊 SocialAPI.getUserProfile: Including profileVisitFrom for engagement tracking:', profileVisitFrom);
+    }
+    
+    const response = await api.get<ApiResponse<any>>(`/api/v1/wallet/${walletAddress}/profile`, params);
     
     console.log('🔍 SocialAPI.getUserProfile: Response received:', {
       ok: response.ok,
@@ -794,6 +1030,40 @@ export class SocialAPIService {
       query: query,
       type: 'posts'
     };
+  }
+
+  // Mention Resolution - Resolve usernames/.sol domains to wallet addresses for linking
+  async resolveMentions(mentions: string[]): Promise<{
+    resolvedMentions: Array<{
+      originalMention: string;
+      walletAddress: string;
+      displayName: string;
+      username?: string;
+      profilePicture?: string;
+      isVerified: boolean;
+    }>;
+    unresolved: string[];
+  }> {
+    console.log('🔗 SocialAPI.resolveMentions: Resolving mentions:', mentions);
+    
+    const response = await api.post<any>('/api/mentions/resolve', {
+      mentions
+    });
+    
+    if (!response.ok) {
+      throw new Error(response.problem);
+    }
+    
+    if (!response.data?.success) {
+      throw new Error(response.data?.message || 'Failed to resolve mentions');
+    }
+    
+    console.log('🔗 SocialAPI.resolveMentions: Resolution response:', {
+      resolvedCount: response.data.data.resolvedMentions?.length || 0,
+      unresolvedCount: response.data.data.unresolved?.length || 0
+    });
+    
+    return response.data.data;
   }
 }
 

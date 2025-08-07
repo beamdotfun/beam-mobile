@@ -5,14 +5,21 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {Image, Shield, ChevronRight} from 'lucide-react-native';
+import {
+  launchImageLibrary,
+  ImagePickerResponse,
+  ImageLibraryOptions,
+} from 'react-native-image-picker';
 import {ConsistentHeader} from '../../components/navigation/ConsistentHeader';
 import {useThemeStore} from '../../store/themeStore';
 import {Avatar} from '../../components/ui/avatar';
 import {useAuthStore} from '../../store/auth';
 import {useProfileStore} from '../../store/profileStore';
+import {Toast} from '../../components/ui/Toast';
 
 interface EditProfilePictureScreenProps {
   navigation: any;
@@ -21,9 +28,14 @@ interface EditProfilePictureScreenProps {
 export default function EditProfilePictureScreen({navigation}: EditProfilePictureScreenProps) {
   const {colors} = useThemeStore();
   const {user} = useAuthStore();
-  const {currentProfile} = useProfileStore();
+  const {currentProfile, uploadProfilePicture} = useProfileStore();
   
   const [isLoading, setIsLoading] = useState(false);
+  const [toast, setToast] = useState({
+    visible: false,
+    message: '',
+    type: 'info' as 'success' | 'error' | 'warning' | 'info',
+  });
 
   // Get current profile picture from comprehensive profile or user data
   const currentProfilePicture = currentProfile?.profilePicture || 
@@ -35,22 +47,90 @@ export default function EditProfilePictureScreen({navigation}: EditProfilePictur
                       (user as any)?.displayName || 
                       user?.displayName;
 
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+    setToast({
+      visible: true,
+      message,
+      type,
+    });
+  };
+
+  const hideToast = () => {
+    setToast(prev => ({...prev, visible: false}));
+  };
+
+  const validateFile = (file: any): { valid: boolean; error?: string } => {
+    // Size check (5MB max)
+    if (file.fileSize && file.fileSize > 5 * 1024 * 1024) {
+      return { valid: false, error: 'File too large. Maximum size is 5MB.' };
+    }
+    
+    // Type check
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (file.type && !allowedTypes.includes(file.type)) {
+      return { valid: false, error: 'Invalid file type. Please use JPEG, PNG, or WebP.' };
+    }
+    
+    return { valid: true };
+  };
+
   const handleUnverifiedUpload = () => {
-    // TODO: Implement image picker and upload
-    Alert.alert(
-      'Coming Soon', 
-      'Image upload functionality will be implemented soon.',
-      [{text: 'OK'}]
-    );
+    const options: ImageLibraryOptions = {
+      mediaType: 'photo',
+      includeBase64: false,
+      maxWidth: 2000,
+      maxHeight: 2000,
+      quality: 0.9,
+    };
+
+    launchImageLibrary(options, async (response: ImagePickerResponse) => {
+      if (response.didCancel || !response.assets || response.assets.length === 0) {
+        return;
+      }
+
+      if (response.errorMessage) {
+        showToast(response.errorMessage, 'error');
+        return;
+      }
+
+      const asset = response.assets[0];
+      
+      // Validate file
+      const validation = validateFile(asset);
+      if (!validation.valid) {
+        showToast(validation.error!, 'error');
+        return;
+      }
+
+      // Show loading state
+      setIsLoading(true);
+
+      try {
+        // Upload the image
+        const newProfilePictureUrl = await uploadProfilePicture(asset);
+        
+        // Show success message and navigate back after a short delay
+        showToast('Profile picture updated successfully!', 'success');
+        
+        // Navigate back after toast is shown
+        setTimeout(() => {
+          navigation.goBack();
+        }, 1500);
+        
+      } catch (error: any) {
+        console.error('Upload error:', error);
+        showToast(
+          error.message || 'Failed to upload profile picture. Please try again.',
+          'error'
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    });
   };
 
   const handleVerifiedNFT = () => {
-    // TODO: Navigate to NFT selection screen
-    Alert.alert(
-      'Coming Soon', 
-      'NFT profile picture selection will be implemented soon.',
-      [{text: 'OK'}]
-    );
+    navigation.navigate('NFTSelection');
   };
 
   const styles = StyleSheet.create({
@@ -147,11 +227,53 @@ export default function EditProfilePictureScreen({navigation}: EditProfilePictur
       opacity: 0.6,
       backgroundColor: colors.muted,
     },
+    loadingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000,
+    },
+    loadingContainer: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 24,
+      alignItems: 'center',
+    },
+    loadingText: {
+      fontSize: 14,
+      color: colors.foreground,
+      marginTop: 12,
+      fontFamily: 'Inter-Medium',
+    },
   });
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ConsistentHeader title="Update Profile Picture" onBack={() => navigation.goBack()} />
+      
+      {/* Toast Notification */}
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+        position="top"
+      />
+      
+      {/* Loading Overlay */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Uploading profile picture...</Text>
+          </View>
+        </View>
+      )}
       
       <View style={styles.content}>
         <View style={styles.headerContainer}>

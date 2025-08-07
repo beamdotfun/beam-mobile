@@ -151,10 +151,21 @@ export const useVotingStore = create<VotingStore>()(
 
         // Check if user has created at least one post
         try {
-          const userPostCount = await get().checkUserPostCount(walletStore.publicKey.toString());
+          const userWallet = walletStore.publicKey.toString();
+          console.log('🔍 VotingStore: About to check post count for voting user:', userWallet.slice(0, 8) + '...');
+          const userPostCount = await get().checkUserPostCount(userWallet);
+          console.log('🔍 VotingStore: Post count check result:', {
+            userWallet: userWallet.slice(0, 8) + '...',
+            postCount: userPostCount,
+            canVote: userPostCount > 0
+          });
+          
           if (userPostCount === 0) {
+            console.log('🚫 VotingStore: User has no posts, cannot vote');
             throw new Error('You must create at least one post before you can vote on other users');
           }
+          
+          console.log('✅ VotingStore: User has posts, can proceed with vote');
         } catch (error: any) {
           if (error.message.includes('at least one post')) {
             throw error; // Re-throw post count error
@@ -446,10 +457,18 @@ export const useVotingStore = create<VotingStore>()(
       // Check user post count
       checkUserPostCount: async (userWallet: string) => {
         try {
+          console.log('🔍 VotingStore: Checking post count for wallet:', userWallet);
           const posts = await socialAPI.getUserPosts(userWallet, 1, 0); // Get first page with 1 item to check if any exist
-          return posts?.posts?.length || 0;
+          const postCount = posts?.posts?.length || 0;
+          console.log('🔍 VotingStore: Post count result:', {
+            wallet: userWallet.slice(0, 8) + '...',
+            postCount,
+            postsData: posts?.posts?.[0] ? 'Has posts' : 'No posts found'
+          });
+          return postCount;
         } catch (error) {
           console.error('Failed to check user post count:', error);
+          console.log('🔍 VotingStore: Falling back to allow voting due to API error');
           // Return 1 as fallback to allow voting if API is down
           return 1;
         }

@@ -16,6 +16,7 @@ interface PostCreationStore extends PostCreationState {
   // Draft management
   updateMessage: (message: string) => void;
   addMediaAsset: (asset: MediaAsset) => void;
+  updateMediaAsset: (assetId: string, updates: Partial<MediaAsset>) => void;
   removeMediaAsset: (assetId: string) => void;
   reorderMediaAssets: (fromIndex: number, toIndex: number) => void;
   clearDraft: () => void;
@@ -32,6 +33,10 @@ interface PostCreationStore extends PostCreationState {
 
   // Validation
   validateDraft: () => boolean;
+  
+  // Internal helpers
+  getFullMessageWithMarkup: () => string;
+  getTotalCharacterCount: () => number;
 
   // UI state
   setPosting: (posting: boolean) => void;
@@ -55,19 +60,21 @@ export const usePostCreationStore = create<PostCreationStore>((set, get) => ({
 
   // Update message with validation
   updateMessage: (message: string) => {
-    const characterCount = message.length;
-    const isValid = characterCount > 0 && characterCount <= MAX_MESSAGE_LENGTH;
+    set(state => {
+      const totalCharacterCount = get().getTotalCharacterCount();
+      const isValid = totalCharacterCount > 0 && totalCharacterCount <= MAX_MESSAGE_LENGTH;
 
-    set(state => ({
-      draft: {
-        ...state.draft,
-        message,
-        characterCount,
-        isValid:
-          isValid &&
-          (state.draft.mediaAssets.length > 0 || message.trim().length > 0),
-      },
-    }));
+      return {
+        draft: {
+          ...state.draft,
+          message,
+          characterCount: totalCharacterCount,
+          isValid:
+            isValid &&
+            (state.draft.mediaAssets.length > 0 || message.trim().length > 0),
+        },
+      };
+    });
   },
 
   // Add media asset
@@ -81,30 +88,68 @@ export const usePostCreationStore = create<PostCreationStore>((set, get) => ({
       }
 
       const newMediaAssets = [...state.draft.mediaAssets, asset];
-      return {
+      const newState = {
         draft: {
           ...state.draft,
           mediaAssets: newMediaAssets,
-          isValid: get().validateDraft(),
         },
         error: null,
       };
+      
+      // Update character count after setting new media assets
+      const totalCharacterCount = get().getTotalCharacterCount();
+      newState.draft.characterCount = totalCharacterCount;
+      newState.draft.isValid = get().validateDraft();
+      
+      return newState;
+    });
+  },
+
+  // Update media asset
+  updateMediaAsset: (assetId: string, updates: Partial<MediaAsset>) => {
+    set(state => {
+      const newState = {
+        draft: {
+          ...state.draft,
+          mediaAssets: state.draft.mediaAssets.map(asset =>
+            asset.id === assetId ? { ...asset, ...updates } : asset
+          ),
+        },
+      };
+      
+      // Recalculate character count if cloudUrl was updated (after upload)
+      if (updates.cloudUrl) {
+        const totalCharacterCount = get().getTotalCharacterCount();
+        newState.draft.characterCount = totalCharacterCount;
+        newState.draft.isValid = get().validateDraft();
+      }
+      
+      return newState;
     });
   },
 
   // Remove media asset
   removeMediaAsset: (assetId: string) => {
-    set(state => ({
-      draft: {
-        ...state.draft,
-        mediaAssets: state.draft.mediaAssets.filter(
-          asset => asset.id !== assetId,
+    set(state => {
+      const newState = {
+        draft: {
+          ...state.draft,
+          mediaAssets: state.draft.mediaAssets.filter(
+            asset => asset.id !== assetId,
+          ),
+        },
+        uploadProgress: state.uploadProgress.filter(
+          progress => progress.assetId !== assetId,
         ),
-      },
-      uploadProgress: state.uploadProgress.filter(
-        progress => progress.assetId !== assetId,
-      ),
-    }));
+      };
+      
+      // Recalculate character count after removing media asset
+      const totalCharacterCount = get().getTotalCharacterCount();
+      newState.draft.characterCount = totalCharacterCount;
+      newState.draft.isValid = get().validateDraft();
+      
+      return newState;
+    });
   },
 
   // Reorder media assets
@@ -209,20 +254,28 @@ export const usePostCreationStore = create<PostCreationStore>((set, get) => ({
 
     try {
       console.log('🚀 Starting blockchain post creation...');
+      console.log('📊 Media assets:', draft.mediaAssets.map(asset => ({
+        id: asset.id,
+        type: asset.type,
+        hasCloudUrl: !!asset.cloudUrl,
+        cloudUrl: asset.cloudUrl?.substring(0, 50) + '...'
+      })));
       
-      // Upload media assets first if any
-      const mediaUrls: string[] = [];
-      for (const asset of draft.mediaAssets) {
-        const uploadedUrl = await get().uploadMedia(asset);
-        mediaUrls.push(uploadedUrl);
-      }
-
+      // Media assets are already uploaded and have cloudUrl values
+      // No need to re-upload, just use the full message with markup
+      
       // Create post using blockchain transaction service
       const blockchainService = walletStore.blockchainService;
       console.log('🔄 Creating blockchain transaction...');
+      
+      // Use full message including hidden markup
+      const fullMessage = get().getFullMessageWithMarkup();
+      
+      console.log('📝 Full message with markup:', fullMessage);
+      
       const result = await blockchainService.createPost({
         userWallet: walletStore.publicKey.toString(),
-        message: draft.message.trim(),
+        message: fullMessage.trim(),
         // TODO: Add media URLs to blockchain transaction when supported
         // mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
         // quotedPostId: draft.quotedPostId,
@@ -274,7 +327,7 @@ export const usePostCreationStore = create<PostCreationStore>((set, get) => ({
       
       // If wallet not connected, provide default estimate
       if (!walletStore.connected || !walletStore.publicKey) {
-        const defaultFee = 0.001;
+        const defaultFee = 0.0001;
         set(state => ({
           draft: {
             ...state.draft,
@@ -304,7 +357,7 @@ export const usePostCreationStore = create<PostCreationStore>((set, get) => ({
       return feeInSol;
     } catch (error) {
       console.error('Fee estimation failed:', error);
-      const defaultFee = 0.001;
+      const defaultFee = 0.0001;
       
       set(state => ({
         draft: {
@@ -320,11 +373,44 @@ export const usePostCreationStore = create<PostCreationStore>((set, get) => ({
   // Validate draft
   validateDraft: () => {
     const {draft} = get();
+    const totalCharacterCount = get().getTotalCharacterCount();
     return (
-      draft.characterCount >= 0 &&
-      draft.characterCount <= MAX_MESSAGE_LENGTH &&
+      totalCharacterCount >= 0 &&
+      totalCharacterCount <= MAX_MESSAGE_LENGTH &&
       (draft.message.trim().length > 0 || draft.mediaAssets.length > 0)
     );
+  },
+  
+  // Get full message including hidden markup
+  getFullMessageWithMarkup: () => {
+    const {draft} = get();
+    let fullMessage = draft.message;
+    
+    // Add quoted post markup if present
+    if (draft.quotedPostId) {
+      const quoteMarkup = `<<quote>>${draft.quotedPostId}<</quote>>`;
+      fullMessage = fullMessage ? `${fullMessage}\n\n${quoteMarkup}` : quoteMarkup;
+    }
+    
+    // Add markup for each uploaded media asset
+    draft.mediaAssets.forEach(asset => {
+      if (asset.cloudUrl) {
+        const markup = asset.type === 'video' 
+          ? `<<video>>${asset.cloudUrl}<</video>>`
+          : `<<image>>${asset.cloudUrl}<</image>>`;
+        
+        fullMessage = fullMessage ? `${fullMessage}\n\n${markup}` : markup;
+      }
+    });
+    
+    return fullMessage;
+  },
+  
+  // Get total character count including hidden markup
+  getTotalCharacterCount: () => {
+    const {draft} = get();
+    const fullMessage = get().getFullMessageWithMarkup();
+    return fullMessage.length;
   },
 
   // UI state setters

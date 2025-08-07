@@ -149,7 +149,7 @@ const ThreadPostCard = React.memo(({
 export default function PostsScreen({navigation}: PostsScreenProps) {
   const {colors} = useThemeStore();
   const {user} = useAuthStore();
-  const {drafts, threads, isLoading, error, loadDrafts, loadThreads, deleteDraft, selectDraft, createDraft} = useDraftsStore();
+  const {drafts, threads, isLoading, error, loadDrafts, loadThreads, deleteDraft, selectDraft, createDraft, clearError} = useDraftsStore();
   const [selectedTab, setSelectedTab] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -184,10 +184,11 @@ export default function PostsScreen({navigation}: PostsScreenProps) {
   // Load drafts and threads when the Drafts tab is selected
   useEffect(() => {
     if (selectedTab === 2) {
+      clearError(); // Clear any previous errors when switching to drafts tab
       loadDrafts();
       loadThreads();
     }
-  }, [selectedTab, loadDrafts, loadThreads]);
+  }, [selectedTab, loadDrafts, loadThreads, clearError]);
 
   // Process drafts using new thread system
   const processedDrafts = useMemo(() => {
@@ -969,16 +970,22 @@ export default function PostsScreen({navigation}: PostsScreenProps) {
         );
 
       case 2: // Drafts
-        if (error && processedDrafts.length === 0) {
-          return (
-            <EnhancedErrorState
-              title="Can't load drafts"
-              subtitle="Check your connection and try again"
-              onRetry={handleRefresh}
-              retryLabel="Try Again"
-              retrying={refreshing || isLoading}
-            />
-          );
+        // Only show error state if there's an actual network/auth error
+        // Not when we successfully loaded but got 0 drafts
+        if (error && !isLoading && !refreshing) {
+          // Don't show error if we have successfully loaded data (even if empty)
+          const hasLoadedSuccessfully = drafts !== undefined || threads !== undefined;
+          if (!hasLoadedSuccessfully) {
+            return (
+              <EnhancedErrorState
+                title="Can't load drafts"
+                subtitle="Check your connection and try again"
+                onRetry={handleRefresh}
+                retryLabel="Try Again"
+                retrying={refreshing || isLoading}
+              />
+            );
+          }
         }
 
         return (
@@ -1010,7 +1017,7 @@ export default function PostsScreen({navigation}: PostsScreenProps) {
                 <View style={styles.emptyState}>
                   <FileText size={32} color={colors.mutedForeground} />
                   <Text style={styles.emptyStateText}>
-                    No drafts yet. Start writing and save your work!
+                    No drafts yet
                   </Text>
                 </View>
               )

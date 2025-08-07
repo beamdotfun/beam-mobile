@@ -79,6 +79,9 @@ export interface Post {
 
   // ===== QUOTE TRACKING =====
   quoted_by: string[];              // Array of signatures that quoted this post
+  quotedBy?: string[];              // Alternative field name for camelCase
+  quoted_by_count?: number;         // Total count of quotes
+  quotedByCount?: number;           // Alternative field name for camelCase
   quote_details: Array<{
     signature: string;
     user: string;                   // wallet address
@@ -88,6 +91,13 @@ export interface Post {
     quoteMessage: string;
     createdAt: string;
   }>;
+  quotedByDetails?: Array<string>; // Detailed quote information (signature:wallet:timestamp)
+  quotes_received_24h?: number;    // Quotes in last 24 hours
+  quotesReceived24h?: number;      // Alternative field name for camelCase
+  quotes_received_48h?: number;    // Quotes in last 48 hours
+  quotesReceived48h?: number;      // Alternative field name for camelCase
+  quotes_received_72h?: number;    // Quotes in last 72 hours
+  quotesReceived72h?: number;      // Alternative field name for camelCase
 
   // ===== ENGAGEMENT COUNTS =====
   receiptCount?: number;                 // New camelCase field from backend

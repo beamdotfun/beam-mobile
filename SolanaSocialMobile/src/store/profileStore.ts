@@ -30,12 +30,13 @@ interface ProfileState {
   activityHasMore: boolean;
 
   // Actions
-  loadProfile: (walletAddress?: string) => Promise<void>;
+  loadProfile: (walletAddress?: string, profileVisitFrom?: string) => Promise<void>;
   loadUserPosts: (walletAddress: string, refresh?: boolean) => Promise<void>;
   loadUserActivity: (walletAddress: string, refresh?: boolean) => Promise<void>;
   followUser: (walletAddress: string) => Promise<void>;
   unfollowUser: (walletAddress: string) => Promise<void>;
   updateProfile: (data: ProfileEditData) => Promise<void>;
+  uploadProfilePicture: (file: any) => Promise<string>;
   refreshProfile: () => Promise<void>;
 
   // Verification
@@ -65,8 +66,8 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   activityHasMore: true,
 
   // Load user profile - wallet-based only (userId endpoint not available)
-  loadProfile: async (walletAddress?: string) => {
-    console.log('🔍 ProfileStore.loadProfile: Starting with walletAddress:', walletAddress);
+  loadProfile: async (walletAddress?: string, profileVisitFrom?: string) => {
+    console.log('🔍 ProfileStore.loadProfile: Starting with walletAddress:', walletAddress, 'profileVisitFrom:', profileVisitFrom);
     
     // Check if we're switching to a different user profile - if so, clear all data
     const currentProfileWallet = get().currentProfile?.userWallet;
@@ -113,7 +114,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       // Load profile data (required)
       const profileResponse = await (isOwnProfile ? 
         socialAPI.getAuthenticatedUserProfile() : 
-        socialAPI.getUserProfile(walletAddress!)
+        socialAPI.getUserProfile(walletAddress!, profileVisitFrom) // Pass profileVisitFrom for tracking
       );
       
       // Create stats from profile response data (no need for separate API call)
@@ -200,9 +201,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
           brandAddress: profileResponse.isBrand ? profileResponse.walletAddress : undefined,
           brandName: profileResponse.brandName || (profileResponse.isBrand ? profileResponse.displayName : undefined),
           
-          // Settings - Default values
-          connectionMethod: undefined,
-          explorer: undefined,
+          // Settings - Get from API response
+          connectionMethod: profileResponse.connectionMethod,
+          explorer: profileResponse.explorer,
           showBadgesOnProfile: profileResponse.badgesEnabled ?? true,
         };
       }
@@ -585,11 +586,73 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
               // Legacy fields
               allowDirectMessages: data.allowDirectMessages ?? state.currentProfile.allowDirectMessages,
               showActivity: data.showActivity ?? state.currentProfile.showActivity,
+              // Solana settings
+              explorer: data.explorer ?? updatedData.explorer ?? state.currentProfile.explorer,
+              connectionMethod: data.connectionMethod ?? updatedData.connectionMethod ?? state.currentProfile.connectionMethod,
             }
           : null,
       }));
+      
+      // Also update auth store user data with Solana settings
+      const authStore = useAuthStore.getState();
+      if (authStore.user && (data.explorer || data.connectionMethod)) {
+        // Update the user object directly in the auth store state
+        useAuthStore.setState(state => ({
+          user: state.user ? {
+            ...state.user,
+            explorer: data.explorer ?? state.user.explorer,
+            connectionMethod: data.connectionMethod ?? state.user.connectionMethod,
+          } : null
+        }));
+      }
     } catch (error) {
       console.error('Failed to update profile:', error);
+      throw error;
+    }
+  },
+
+  // Upload profile picture
+  uploadProfilePicture: async (file: any) => {
+    try {
+      console.log('🖼️ ProfileStore: Starting upload with file:', {
+        uri: file.uri,
+        type: file.type,
+        fileName: file.fileName,
+      });
+      
+      const result = await socialAPI.uploadProfilePicture(file);
+      
+      console.log('🖼️ ProfileStore: Upload result:', result);
+      
+      // Update the current profile with the new profile picture URL
+      if (result && result.profilePicture) {
+        set(state => ({
+          currentProfile: state.currentProfile
+            ? {
+                ...state.currentProfile,
+                profilePicture: result.profilePicture,
+              }
+            : null,
+        }));
+        
+        // Also update auth store user data
+        const {updateUser} = useAuthStore.getState();
+        if (updateUser) {
+          updateUser({profilePicture: result.profilePicture});
+        }
+        
+        console.log('🖼️ ProfileStore: Profile picture updated successfully');
+        return result.profilePicture;
+      } else {
+        console.error('🖼️ ProfileStore: No profilePicture in result:', result);
+        throw new Error('Upload succeeded but no image URL returned');
+      }
+    } catch (error: any) {
+      console.error('🖼️ ProfileStore: Upload failed:', error);
+      console.error('🖼️ ProfileStore: Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
       throw error;
     }
   },

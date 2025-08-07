@@ -215,6 +215,25 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
       const result = await discoveryAPI.getLeaderboard(type, 1, 50, period);
 
       console.log('Leaderboard result:', result);
+      
+      // Debug: Log the structure of the first few leaderboard entries
+      if (result?.leaderboard?.length > 0) {
+        console.log('🔍 Leaderboard entry structure (first 3 entries):');
+        result.leaderboard.slice(0, 3).forEach((entry: any, index: number) => {
+          console.log(`Entry ${index + 1}:`, {
+            username: entry.username,
+            displayName: entry.displayName,
+            walletAddress: entry.walletAddress,
+            wallet: entry.wallet,
+            owner: entry.owner,
+            address: entry.address,
+            primaryWalletAddress: entry.primaryWalletAddress,
+            userWallet: entry.userWallet,
+            publicKey: entry.publicKey,
+            allKeys: Object.keys(entry)
+          });
+        });
+      }
 
       set({
         [`${type}Leaderboard`]: result.leaderboard,

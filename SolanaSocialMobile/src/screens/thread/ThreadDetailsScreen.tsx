@@ -50,6 +50,7 @@ interface ThreadDetailsScreenProps {
       thread?: ThreadGroup;
       threadId?: string;
       posts?: Post[];
+      postExpansion?: boolean; // Track if this is a post expansion for analytics
     };
   };
 }
@@ -104,7 +105,11 @@ export default function ThreadDetailsScreen({navigation, route}: ThreadDetailsSc
         // Fetch thread posts from API using any post signature in the thread
         console.log('🧵 ThreadDetailsScreen: Loading thread from API:', route.params.threadId);
         
-        const threadResponse = await socialAPI.getThreadPosts(route.params.threadId);
+        // ENGAGEMENT TRACKING: Include postExpansion parameter if this is a user expansion
+        const isPostExpansion = route.params?.postExpansion === true;
+        console.log('📊 ThreadDetailsScreen: Thread expansion tracking:', isPostExpansion);
+        
+        const threadResponse = await socialAPI.getThreadPosts(route.params.threadId, isPostExpansion);
         const { thread: threadData } = threadResponse;
         
         if (threadData && threadData.posts && threadData.posts.length > 0) {
@@ -177,15 +182,24 @@ export default function ThreadDetailsScreen({navigation, route}: ThreadDetailsSc
     navigation.navigate(screen, params);
   };
 
-  const handleUserPress = (walletAddress: string) => {
+  const handleUserPress = (userId: number | undefined | null, walletAddress: string, postSignature?: string) => {
+    // ENGAGEMENT TRACKING: Include profileVisitFrom for analytics
+    console.log('📊 ThreadDetailsScreen: Tracking profile visit from post:', postSignature);
+    
     // Check if we're in SearchNavigator (has 'Profile' screen) or FeedNavigator (has 'UserProfile' screen)
     const routes = navigation.getState?.()?.routeNames || [];
     if (routes.includes('UserProfile')) {
       // We're in FeedNavigator
-      navigation.navigate('UserProfile', {walletAddress});
+      navigation.navigate('UserProfile', {
+        walletAddress,
+        profileVisitFrom: postSignature // Track visit source
+      });
     } else {
       // We're in SearchNavigator or other navigator with 'Profile' screen
-      navigation.navigate('Profile', {walletAddress});
+      navigation.navigate('Profile', {
+        walletAddress,
+        profileVisitFrom: postSignature // Track visit source
+      });
     }
   };
 
@@ -415,20 +429,44 @@ export default function ThreadDetailsScreen({navigation, route}: ThreadDetailsSc
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Pressable style={styles.backButton} onPress={handleBack}>
-              <ArrowLeft size={24} color={colors.foreground} />
-            </Pressable>
+        <AppNavBar
+          title="Thread"
+          showBackButton={true}
+          onBackPress={handleBack}
+          onNewPostPress={() => navigation.navigate('CreatePost')}
+        />
+        
+        <ScrollView style={{flex: 1}} showsVerticalScrollIndicator={false}>
+          {/* Thread Header Skeleton */}
+          <View style={[styles.threadHeader, {opacity: 0.7}]}>
+            <View style={styles.threadTitleRow}>
+              <View style={{width: 20, height: 20, backgroundColor: colors.muted, borderRadius: 4}} />
+              <View style={{width: 60, height: 20, backgroundColor: colors.muted, borderRadius: 4, marginLeft: 8}} />
+            </View>
+            
+            <View style={styles.threadMeta}>
+              <View style={styles.threadMetaItem}>
+                <View style={{width: 16, height: 16, backgroundColor: colors.muted, borderRadius: 4}} />
+                <View style={{width: 100, height: 16, backgroundColor: colors.muted, borderRadius: 4, marginLeft: 8}} />
+              </View>
+            </View>
+
+            {/* Stats skeleton */}
+            <View style={styles.threadStats}>
+              {[1, 2, 3, 4].map((i) => (
+                <View key={i} style={styles.threadStat}>
+                  <View style={{width: 30, height: 24, backgroundColor: colors.muted, borderRadius: 4, marginBottom: 4}} />
+                  <View style={{width: 40, height: 14, backgroundColor: colors.muted, borderRadius: 4}} />
+                </View>
+              ))}
+            </View>
           </View>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>Thread</Text>
+
+          {/* Thread Posts Skeleton */}
+          <View style={{paddingHorizontal: 16}}>
+            <FeedSkeleton itemCount={3} showImages={true} />
           </View>
-          <View style={styles.headerRight} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <FeedSkeleton itemCount={3} showImages={false} />
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -520,9 +558,52 @@ export default function ThreadDetailsScreen({navigation, route}: ThreadDetailsSc
   }
 
   const threadSummary = getThreadSummary(thread);
-  const totalViews = thread.posts.reduce((sum, post) => sum + (post.view_count || post.viewCount || 0), 0);
-  const totalQuotes = thread.posts.reduce((sum, post) => sum + (post.quote_count || post.quoteCount || 0), 0);
-  const totalBookmarks = thread.posts.reduce((sum, post) => sum + (post.receipts_count || post.receiptsCount || 0), 0);
+  
+  // Calculate thread stats from all posts in the thread
+  const totalViews = thread.posts.reduce((sum, post, index) => {
+    // Try multiple field names for views
+    const views = post.postViewCount || post.view_count || post.viewCount || 0;
+    
+    // Debug log for first post to check field names
+    if (index === 0) {
+      console.log('📊 ThreadDetails: Sample post stats:', {
+        postViewCount: post.postViewCount,
+        postUniqueViewsCount: post.postUniqueViewsCount,
+        postExpansionsCount: post.postExpansionsCount,
+        postReceiptsCount: post.postReceiptsCount,
+        view_count: post.view_count,
+        receipts_count: post.receipts_count,
+      });
+    }
+    
+    return sum + views;
+  }, 0);
+  
+  const totalUniqueViews = thread.posts.reduce((sum, post) => {
+    // Try multiple field names for unique views
+    const uniqueViews = post.postUniqueViewsCount || post.unique_views_count || post.uniqueViewsCount || 0;
+    return sum + uniqueViews;
+  }, 0);
+  
+  const totalExpansions = thread.posts.reduce((sum, post) => {
+    // Count post expansions (when users click to view full post)
+    const expansions = post.postExpansionsCount || post.expansions_count || post.expansionsCount || 0;
+    return sum + expansions;
+  }, 0);
+  
+  const totalReceipts = thread.posts.reduce((sum, post) => {
+    // Count receipts/bookmarks
+    const receipts = post.postReceiptsCount || post.receipts_count || post.receiptsCount || 0;
+    return sum + receipts;
+  }, 0);
+  
+  console.log('📊 ThreadDetails: Thread stats calculated:', {
+    totalPosts: thread.posts?.length,
+    totalViews,
+    totalUniqueViews,
+    totalExpansions,
+    totalReceipts,
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -575,7 +656,7 @@ export default function ThreadDetailsScreen({navigation, route}: ThreadDetailsSc
 
             <View style={styles.threadStats}>
               <View style={styles.threadStat}>
-                <Text style={styles.threadStatValue}>{thread.totalPosts}</Text>
+                <Text style={styles.threadStatValue}>{thread.posts?.length || thread.totalPosts || 0}</Text>
                 <Text style={styles.threadStatLabel}>Posts</Text>
               </View>
               
@@ -585,12 +666,12 @@ export default function ThreadDetailsScreen({navigation, route}: ThreadDetailsSc
               </View>
               
               <View style={styles.threadStat}>
-                <Text style={styles.threadStatValue}>{totalQuotes}</Text>
-                <Text style={styles.threadStatLabel}>Quotes</Text>
+                <Text style={styles.threadStatValue}>{totalUniqueViews.toLocaleString()}</Text>
+                <Text style={styles.threadStatLabel}>Unique</Text>
               </View>
               
               <View style={styles.threadStat}>
-                <Text style={styles.threadStatValue}>{totalBookmarks}</Text>
+                <Text style={styles.threadStatValue}>{totalReceipts}</Text>
                 <Text style={styles.threadStatLabel}>Receipts</Text>
               </View>
             </View>

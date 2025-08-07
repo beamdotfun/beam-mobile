@@ -30,16 +30,24 @@ function PostsTab() {
   }, [publicKey]);
 
   const handlePostPress = (post: any) => {
+    // ENGAGEMENT TRACKING: Add postExpansion=true for analytics
+    console.log('📊 ProfileHomeScreen: Tracking post expansion for engagement metrics');
+    
     // Check if this is a thread root post and route appropriately
     if (post.threadData || post.isThreadRoot || post.threadPostCount > 0) {
       console.log('🧵 ProfileHomeScreen.handlePostPress: Navigating to thread details for post:', post.id);
       navigation.navigate('ThreadDetails', {
         threadId: post.signature || post.transactionHash || post.id?.toString(),
-        post: post
+        post: post,
+        postExpansion: true // Track expansion for analytics
       });
     } else {
       console.log('📄 ProfileHomeScreen.handlePostPress: Navigating to post details for regular post:', post.id);
-      navigation.navigate('PostDetail', {postId: post.transaction_hash || post.signature || post.id, post});
+      navigation.navigate('PostDetail', {
+        postId: post.transaction_hash || post.signature || post.id, 
+        post,
+        postExpansion: true // Track expansion for analytics
+      });
     }
   };
 

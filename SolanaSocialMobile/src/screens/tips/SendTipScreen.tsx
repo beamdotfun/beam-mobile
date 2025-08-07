@@ -7,13 +7,13 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   StyleSheet,
   Dimensions,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Share, MoreHorizontal, Send, ChevronDown, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, Share, MoreHorizontal, Send, ChevronDown, AlertTriangle, X } from 'lucide-react-native';
+import { Image } from 'react-native';
 import { FeedSkeleton } from '../../components/loading/FeedSkeleton';
 import { EnhancedErrorState } from '../../components/ui/EnhancedErrorState';
 import { useEnhancedRefresh } from '../../hooks/useEnhancedRefresh';
@@ -36,7 +36,7 @@ const QUICK_AMOUNTS = [1, 5, 10, 25]; // USD amounts
 
 export default function SendTipScreen({ navigation, route }: SendTipScreenProps) {
   const { colors } = useThemeStore();
-  const { connected, connecting, connect, balance } = useWalletStore();
+  const { connected, connecting, connect, balance, fetchBalance } = useWalletStore();
   const { user } = useAuthStore();
   const { currentProfile } = useProfileStore();
   const { sendTip, loading: tippingLoading, error: tippingError, resetError } = useTipping();
@@ -50,12 +50,7 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
     getWalletWarningType 
   } = walletConnection;
 
-  const hasBalance = balance !== null && balance > 0;
-  const walletWarningType = getWalletWarningType({ requireBalance: true, balance });
-  const showWalletWarning = walletWarningType !== null;
-  const canUseTipForm = !showWalletWarning;
-
-  // State
+  // State - moved to top to avoid hoisting issues
   const [availableTokens, setAvailableTokens] = useState<TokenInfo[]>([]);
   const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(null);
   const [amount, setAmount] = useState('');
@@ -65,6 +60,41 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [confirmationDetails, setConfirmationDetails] = useState<{
+    amount: string;
+    token: string;
+    recipient: string;
+    message?: string;
+  } | null>(null);
+
+  // Get SOL balance from available tokens instead of wallet store
+  // Only check balance after tokens are loaded to avoid undefined issues
+  const solToken = Array.isArray(availableTokens) ? 
+    availableTokens.find(token => token.symbol === 'SOL' || token.isNative) : 
+    null;
+  const solBalance = solToken?.amount || 0;
+  const hasBalance = solBalance > 0;
+  
+  console.log('🔍 SendTipScreen: Balance check:', {
+    walletStoreBalance: balance,
+    solTokenBalance: solBalance,
+    hasBalance,
+    connected,
+    publicKey: publicKey?.toString().slice(0, 8) + '...',
+    availableTokensType: typeof availableTokens,
+    availableTokensIsArray: Array.isArray(availableTokens),
+    tokenCount: Array.isArray(availableTokens) ? availableTokens.length : 0,
+    loading
+  });
+  
+  // Only check wallet warning if we have loaded tokens or are not connected
+  const shouldCheckBalance = !connected || !loading;
+  const walletWarningType = shouldCheckBalance ? 
+    getWalletWarningType({ requireBalance: true, balance: solBalance }) : 
+    null;
+  const showWalletWarning = walletWarningType !== null;
+  const canUseTipForm = !showWalletWarning;
 
   // Load available tokens function
   const loadTokens = useCallback(async () => {
@@ -81,14 +111,29 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
     try {
       console.log('🔍 SendTipScreen: Loading available tokens...');
       const tokens = await tipsAPI.getAvailableTokens(publicKey.toString());
-      setAvailableTokens(tokens);
+      console.log('🔍 SendTipScreen: Tokens API response:', {
+        tokenCount: tokens.length,
+        tokens: tokens.map(t => ({
+          symbol: t.symbol,
+          amount: t.amount,
+          isNative: t.isNative,
+          logoUri: t.logoUri,
+          hasLogo: !!t.logoUri
+        }))
+      });
+      
+      setAvailableTokens(Array.isArray(tokens) ? tokens : []);
       
       // Auto-select SOL if available, otherwise select the first token
       const solToken = tokens.find(token => token.symbol === 'SOL' || token.isNative);
       if (solToken) {
         setSelectedToken(solToken);
+        console.log('✅ SendTipScreen: SOL token found with balance:', solToken.amount);
       } else if (tokens.length > 0) {
         setSelectedToken(tokens[0]);
+        console.log('⚠️ SendTipScreen: No SOL token found, selected:', tokens[0].symbol);
+      } else {
+        console.log('⚠️ SendTipScreen: No tokens available');
       }
       
       console.log('✅ SendTipScreen: Loaded', tokens.length, 'tokens');
@@ -101,16 +146,22 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
     }
   }, [connected, publicKey, refreshing]);
 
-  // Load available tokens on mount
+  // Load available tokens on mount and fetch balance
   useEffect(() => {
-    loadTokens();
-  }, [connected, publicKey]);
+    if (connected && publicKey) {
+      loadTokens();
+      fetchBalance();
+    }
+  }, [connected, publicKey, loadTokens, fetchBalance]);
 
   // Refresh handler
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadTokens();
-  }, [loadTokens]);
+    await Promise.all([
+      loadTokens(),
+      fetchBalance()
+    ]);
+  }, [loadTokens, fetchBalance]);
 
   // Enhanced refresh with haptic feedback
   const { enhancedOnRefresh, tintColor: refreshTintColor, colors: refreshColors, handleRefreshStateChange } = useEnhancedRefresh({
@@ -182,7 +233,10 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
 
   const handleSendTip = useCallback(async () => {
     if (!connected || !publicKey || !selectedToken || !isValidAmount) {
-      Alert.alert('Error', 'Please ensure wallet is connected and amount is valid');
+      setStatusMessage({
+        type: 'error',
+        message: 'Please ensure wallet is connected and amount is valid'
+      });
       return;
     }
 
@@ -192,86 +246,127 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
     console.log('Amount:', amount);
     console.log('Message:', message);
     
-    // Show confirmation dialog
-    Alert.alert(
-      'Send Tip',
-      `Send ${amount} ${selectedToken?.symbol} to ${recipientName || recipientWallet}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Send', 
-          onPress: async () => {
-            try {
-              resetError();
-              console.log('✅ SendTipScreen: Tip confirmed, starting blockchain transaction...');
-              
-              // Convert amount to token's base units (considering token decimals)
-              const amountInBaseUnits = Math.floor(parseFloat(amount) * Math.pow(10, selectedToken.decimals));
-              
-              // Determine if this is SOL or an SPL token
-              const tokenMint = selectedToken.isNative ? undefined : selectedToken.mint;
-              
-              // Send tip using the hook
-              const result = await sendTip(
-                recipientWallet,
-                amountInBaseUnits,
-                tokenMint,
-                selectedToken.symbol,
-                message.trim() || undefined,
-                'user',
-                recipientWallet
-              );
-              
-              // Show success message
-              Alert.alert(
-                'Tip Sent Successfully!',
-                `Your tip of ${amount} ${selectedToken.symbol} has been sent to ${recipientName || recipientWallet}.\n\nTransaction: ${result.signature}`,
-                [
-                  {
-                    text: 'Done',
-                    onPress: () => navigation.goBack()
-                  }
-                ]
-              );
-              
-              console.log('🎉 Tip transaction completed:', result.signature);
-              
-            } catch (error: any) {
-              console.error('❌ SendTipScreen: Tip transaction failed:', error);
-              
-              // Handle specific error types
-              let errorMessage = `Failed to send ${selectedToken.symbol} tip. Please try again.`;
-              
-              if (error.message?.includes('insufficient')) {
-                errorMessage = `Insufficient ${selectedToken.symbol} balance to complete this tip.`;
-              } else if (error.message?.includes('rejected')) {
-                errorMessage = 'Transaction was rejected. Please try again.';
-              } else if (error.message?.includes('timeout')) {
-                errorMessage = 'Transaction timed out. Please check your network connection.';
-              } else if (error.message?.includes('build')) {
-                errorMessage = `Failed to prepare ${selectedToken.symbol} transaction. Please try again.`;
-              } else if (error.message?.includes('Wallet not connected')) {
-                errorMessage = 'Please connect your wallet and try again.';
-              } else if (error.message?.includes('must be greater than 0')) {
-                errorMessage = `${selectedToken.symbol} tip amount must be greater than 0.`;
-              } else if (error.message?.includes('token account')) {
-                errorMessage = `Unable to find ${selectedToken.symbol} token account. Please try again.`;
-              } else if (error.message?.includes('mint')) {
-                errorMessage = `Invalid ${selectedToken.symbol} token. Please select a different token.`;
-              }
-              
-              Alert.alert('Transaction Failed', errorMessage);
-            }
-          }
-        },
-      ]
-    );
-  }, [recipientWallet, recipientName, selectedToken, amount, message, connected, publicKey, isValidAmount, navigation, sendTip, resetError]);
+    // Show styled confirmation screen
+    setConfirmationDetails({
+      amount,
+      token: selectedToken?.symbol || '',
+      recipient: recipientName || recipientWallet,
+      message: message.trim() || undefined,
+    });
+    setShowConfirmation(true);
+  }, [recipientWallet, recipientName, selectedToken, amount, message, connected, publicKey, isValidAmount]);
+
+  const handleConfirmSend = useCallback(async () => {
+    if (!selectedToken || !confirmationDetails) return;
+    
+    try {
+      resetError();
+      setShowConfirmation(false);
+      console.log('✅ SendTipScreen: Tip confirmed, starting blockchain transaction...');
+      console.log('📝 Tip details:', {
+        amount: confirmationDetails.amount,
+        token: selectedToken.symbol,
+        decimals: selectedToken.decimals,
+        recipient: recipientWallet,
+        message: confirmationDetails.message
+      });
+      
+      // For SOL, convert to lamports (9 decimals)
+      // selectedToken.decimals should be 9 for SOL
+      const amountInBaseUnits = Math.floor(parseFloat(confirmationDetails.amount) * Math.pow(10, selectedToken.decimals));
+      
+      console.log('💰 Converted amount:', {
+        displayAmount: confirmationDetails.amount,
+        baseUnits: amountInBaseUnits,
+        decimals: selectedToken.decimals,
+        calculation: `${confirmationDetails.amount} * 10^${selectedToken.decimals} = ${amountInBaseUnits}`
+      });
+      
+      // Determine if this is SOL or an SPL token
+      const tokenMint = selectedToken.isNative ? undefined : selectedToken.mint;
+      
+      // Send tip using the hook - only pass the required parameters
+      const result = await sendTip(
+        recipientWallet,
+        amountInBaseUnits,
+        tokenMint,
+        selectedToken.symbol,
+        confirmationDetails.message
+      );
+      
+      console.log('🎉 Tip transaction completed:', result);
+      console.log('📝 Transaction signature:', result.signature);
+      
+      // Show success status message instead of alert
+      setStatusMessage({
+        type: 'success',
+        message: `Tip sent successfully! ${result.signature.slice(0, 8)}...`
+      });
+      
+      // Auto-navigate back after a short delay
+      setTimeout(() => {
+        navigation.goBack();
+      }, 2000);
+      
+    } catch (error: any) {
+      console.error('❌ SendTipScreen: Tip transaction failed:', error);
+      console.error('   Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      
+      // Reset confirmation state so user can see the form again
+      setShowConfirmation(false);
+      
+      // Handle specific error types
+      let errorMessage = `Failed to send ${selectedToken.symbol} tip. Please try again.`;
+      
+      if (error.message?.includes('SPL token tips are not yet supported')) {
+        errorMessage = 'Only SOL tips are currently supported. Please select SOL.';
+      } else if (error.message?.includes('insufficient')) {
+        errorMessage = `Insufficient ${selectedToken.symbol} balance to complete this tip.`;
+      } else if (error.message?.includes('rejected') || error.message?.includes('cancelled')) {
+        errorMessage = 'Transaction was cancelled.';
+      } else if (error.message?.includes('timeout')) {
+        errorMessage = 'Transaction timed out. Please check your network connection.';
+      } else if (error.message?.includes('build')) {
+        errorMessage = `Failed to prepare ${selectedToken.symbol} transaction. Please try again.`;
+      } else if (error.message?.includes('Wallet not connected')) {
+        errorMessage = 'Please connect your wallet and try again.';
+      } else if (error.message?.includes('must be greater than 0')) {
+        errorMessage = `${selectedToken.symbol} tip amount must be greater than 0.`;
+      } else if (error.message?.includes('Failed to build create-tip transaction')) {
+        // Backend error - log more details
+        console.error('Backend error building transaction:', error.message);
+        errorMessage = 'Failed to build transaction. Please try again.';
+      }
+      
+      setStatusMessage({
+        type: 'error',
+        message: errorMessage
+      });
+    }
+  }, [selectedToken, confirmationDetails, recipientWallet, sendTip, resetError, navigation]);
+
+  const handleCancelConfirmation = useCallback(() => {
+    setShowConfirmation(false);
+    setConfirmationDetails(null);
+  }, []);
 
   // Validation
   const numericAmount = parseFloat(amount) || 0;
-  const maxAmount = selectedToken ? selectedToken.amount / Math.pow(10, selectedToken.decimals) : 0;
+  // API already returns display amounts (e.g., 0.138 SOL), so no need to divide by decimals
+  const maxAmount = selectedToken ? selectedToken.amount : 0;
   const isValidAmount = numericAmount > 0 && numericAmount <= maxAmount;
+  
+  console.log('🔍 SendTipScreen: Amount validation:', {
+    inputAmount: amount,
+    numericAmount,
+    maxAmount,
+    isValidAmount,
+    tokenAmount: selectedToken?.amount,
+    tokenDecimals: selectedToken?.decimals
+  });
   
   // Use tipping loading state for button
   const isTransactionLoading = tippingLoading || loading;
@@ -397,12 +492,23 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
+      flex: 1,
     },
     tokenIcon: {
       width: 32,
       height: 32,
       borderRadius: 16,
       backgroundColor: colors.muted,
+    },
+    tokenIconPlaceholder: {
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors.primary + '20',
+    },
+    tokenIconText: {
+      fontSize: 14,
+      fontWeight: 'bold',
+      color: colors.primary,
     },
     tokenInfo: {
       flex: 1,
@@ -415,13 +521,15 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
     },
     tokenRight: {
       alignItems: 'flex-end',
+      justifyContent: 'center',
+      minWidth: 120,
+      maxWidth: 140,
     },
     tokenBalance: {
       fontSize: 14,
       color: colors.foreground,
       fontFamily: 'Inter-Medium',
       textAlign: 'right',
-      maxWidth: 120,
       flexShrink: 1,
     },
     tokenUsdValue: {
@@ -587,6 +695,157 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
       color: colors.mutedForeground,
       fontFamily: 'Inter-Regular',
       marginTop: 12,
+    },
+    confirmationOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: colors.background,
+      zIndex: 1000,
+    },
+    confirmationHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    confirmationContent: {
+      paddingHorizontal: 16,
+      paddingTop: 24,
+    },
+    confirmationCard: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+    },
+    confirmationTokenImage: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      marginBottom: 16,
+    },
+    confirmationTokenImagePlaceholder: {
+      backgroundColor: colors.primary + '20',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    confirmationTokenImageText: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: colors.primary,
+    },
+    confirmationAmount: {
+      fontSize: 28,
+      fontWeight: '700',
+      color: colors.foreground,
+      fontFamily: 'Inter-Bold',
+      marginBottom: 4,
+    },
+    confirmationToken: {
+      fontSize: 16,
+      color: colors.mutedForeground,
+      fontFamily: 'Inter-Regular',
+      marginBottom: 16,
+    },
+    confirmationRecipient: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.foreground,
+      fontFamily: 'Inter-SemiBold',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    confirmationWallet: {
+      fontSize: 14,
+      color: colors.mutedForeground,
+      fontFamily: 'Inter-Regular',
+      textAlign: 'center',
+    },
+    confirmationMessage: {
+      backgroundColor: colors.muted,
+      borderRadius: 8,
+      padding: 12,
+      marginTop: 16,
+    },
+    confirmationMessageText: {
+      fontSize: 14,
+      color: colors.foreground,
+      fontFamily: 'Inter-Regular',
+      fontStyle: 'italic',
+      textAlign: 'center',
+    },
+    confirmationActions: {
+      marginTop: 24,
+      marginBottom: 32,
+      gap: 12,
+    },
+    confirmationButton: {
+      height: 48,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      width: '100%',
+    },
+    confirmationButtonPrimary: {
+      backgroundColor: colors.primary,
+    },
+    confirmationButtonSecondary: {
+      backgroundColor: colors.secondary,
+    },
+    confirmationButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      fontFamily: 'Inter-SemiBold',
+    },
+    confirmationButtonTextPrimary: {
+      color: colors.primaryForeground,
+    },
+    confirmationButtonTextSecondary: {
+      color: colors.secondaryForeground,
+    },
+    statusMessage: {
+      backgroundColor: colors.card,
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 16,
+      borderWidth: 1,
+    },
+    statusMessageSuccess: {
+      backgroundColor: colors.success + '10',
+      borderColor: colors.success,
+    },
+    statusMessageError: {
+      backgroundColor: colors.destructive + '10',
+      borderColor: colors.destructive,
+    },
+    statusMessageInfo: {
+      backgroundColor: colors.primary + '10',
+      borderColor: colors.primary,
+    },
+    statusMessageText: {
+      fontSize: 14,
+      fontFamily: 'Inter-Regular',
+      textAlign: 'center',
+    },
+    statusMessageTextSuccess: {
+      color: colors.success,
+    },
+    statusMessageTextError: {
+      color: colors.destructive,
+    },
+    statusMessageTextInfo: {
+      color: colors.primary,
     },
   });
 
@@ -799,7 +1058,19 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
                 >
                   <View style={styles.tokenRow}>
                     <View style={styles.tokenLeft}>
-                      <View style={styles.tokenIcon} />
+                      {selectedToken.logoUri ? (
+                        <Image 
+                          source={{ uri: selectedToken.logoUri }} 
+                          style={styles.tokenIcon}
+                          onError={() => console.log('Failed to load token image:', selectedToken.logoUri)}
+                        />
+                      ) : (
+                        <View style={[styles.tokenIcon, styles.tokenIconPlaceholder]}>
+                          <Text style={styles.tokenIconText}>
+                            {selectedToken.symbol.charAt(0)}
+                          </Text>
+                        </View>
+                      )}
                       <View style={styles.tokenInfo}>
                         <Text style={styles.tokenName}>
                           {selectedToken.symbol}  |  {selectedToken.name}
@@ -808,7 +1079,7 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
                     </View>
                     <View style={styles.tokenRight}>
                       <Text style={styles.tokenBalance}>
-                        {tipsAPI.formatTokenAmount(selectedToken.amount, selectedToken.decimals)}
+                        {selectedToken.amount.toFixed(6)} {selectedToken.symbol}
                       </Text>
                       <Text style={styles.tokenUsdValue}>
                         {tipsAPI.formatUsdValue(selectedToken.usdValue)}
@@ -830,7 +1101,7 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
               <View style={styles.sectionHeaderRight}>
                 <Text style={styles.sectionHeader}>Amount</Text>
                 <Text style={styles.sectionCaption}>
-                  Available: {connected && selectedToken ? tipsAPI.formatTokenAmount(selectedToken.amount, selectedToken.decimals) : '--'} {connected && selectedToken ? selectedToken.symbol : 'SOL'}
+                  Available: {connected && selectedToken ? selectedToken.amount.toFixed(6) : '--'} {connected && selectedToken ? selectedToken.symbol : 'SOL'}
                 </Text>
               </View>
 
@@ -913,6 +1184,102 @@ export default function SendTipScreen({ navigation, route }: SendTipScreenProps)
         onSelectToken={handleTokenPicked}
         onClose={handleCloseTokenPicker}
       />
+
+      {/* Confirmation Screen Overlay */}
+      {showConfirmation && confirmationDetails && (
+        <View style={styles.confirmationOverlay}>
+          <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+            {/* Header */}
+            <View style={styles.confirmationHeader}>
+              <Text style={styles.headerTitle}>Confirm Tip</Text>
+              <Pressable onPress={handleCancelConfirmation} style={styles.headerButton}>
+                <X size={24} color={colors.foreground} />
+              </Pressable>
+            </View>
+
+            {/* Scrollable Content */}
+            <ScrollView 
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.confirmationContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Tip Details Card */}
+              <View style={styles.confirmationCard}>
+                {/* Token Image */}
+                {selectedToken?.logoUri ? (
+                  <Image 
+                    source={{ uri: selectedToken.logoUri }} 
+                    style={styles.confirmationTokenImage}
+                  />
+                ) : (
+                  <View style={[styles.confirmationTokenImage, styles.confirmationTokenImagePlaceholder]}>
+                    <Text style={styles.confirmationTokenImageText}>
+                      {confirmationDetails.token.charAt(0)}
+                    </Text>
+                  </View>
+                )}
+                
+                <Text style={styles.confirmationAmount}>
+                  {confirmationDetails.amount} {confirmationDetails.token}
+                </Text>
+                <Text style={styles.confirmationToken}>
+                  {selectedToken && (tipsAPI.formatUsdValue(parseFloat(confirmationDetails.amount) * selectedToken.usdPrice))}
+                </Text>
+                
+                <View style={{ width: '100%', marginTop: 20 }}>
+                  <Text style={styles.confirmationRecipient}>
+                    Sending to
+                  </Text>
+                  <Text style={[styles.confirmationRecipient, { fontWeight: '700', marginTop: 4 }]}>
+                    {confirmationDetails.recipient}
+                  </Text>
+                  {confirmationDetails.recipient !== recipientWallet && (
+                    <Text style={styles.confirmationWallet} numberOfLines={1} ellipsizeMode="middle">
+                      {recipientWallet}
+                    </Text>
+                  )}
+                </View>
+
+                {confirmationDetails.message && (
+                  <View style={styles.confirmationMessage}>
+                    <Text style={styles.confirmationMessageText}>
+                      "{confirmationDetails.message}"
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Warning */}
+              <Text style={styles.footerCaption}>
+                This transaction cannot be undone. Make sure the recipient address is correct.
+              </Text>
+
+              {/* Action Buttons - Full width, stacked */}
+              <View style={styles.confirmationActions}>
+                <Pressable 
+                  style={[styles.confirmationButton, styles.confirmationButtonPrimary]}
+                  onPress={handleConfirmSend}
+                  disabled={tippingLoading}
+                >
+                  <Send size={20} color={colors.primaryForeground} />
+                  <Text style={[styles.confirmationButtonText, styles.confirmationButtonTextPrimary]}>
+                    {tippingLoading ? 'Sending...' : 'Confirm & Send'}
+                  </Text>
+                </Pressable>
+                
+                <Pressable 
+                  style={[styles.confirmationButton, styles.confirmationButtonSecondary]}
+                  onPress={handleCancelConfirmation}
+                >
+                  <Text style={[styles.confirmationButtonText, styles.confirmationButtonTextSecondary]}>
+                    Cancel
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      )}
     </SafeAreaView>
   );
 }

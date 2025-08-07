@@ -430,6 +430,9 @@ export default function FeedHomeScreen({navigation}: Props) {
 
   const handlePostPress = useCallback(
     (post: Post) => {
+      // ENGAGEMENT TRACKING: Add postExpansion=true for analytics
+      console.log('📊 FeedHomeScreen: Tracking post expansion for engagement metrics');
+      
       // Check if this is a thread root post and route appropriately
       if (post.threadData || post.isThreadRoot || post.threadPostCount > 0) {
         console.log('🧵 FeedHomeScreen.handlePostPress: Navigating to thread details for post:', {
@@ -440,29 +443,40 @@ export default function FeedHomeScreen({navigation}: Props) {
         });
         navigation.navigate('ThreadDetails', {
           threadId: post.signature || post.transactionHash || post.id?.toString(),
-          post: post
+          post: post,
+          postExpansion: true // Track expansion for analytics
         });
       } else {
         console.log('📄 FeedHomeScreen.handlePostPress: Navigating to post details for regular post:', post.id);
-        navigation.navigate('PostDetail', {postId: post.transaction_hash || post.signature || post.id, post});
+        navigation.navigate('PostDetail', {
+          postId: post.transaction_hash || post.signature || post.id, 
+          post, 
+          postExpansion: true // Track expansion for analytics
+        });
       }
     },
     [navigation],
   );
 
   const handleUserPress = useCallback(
-    (userId: number | undefined | null, walletAddress: string) => {
+    (userId: number | undefined | null, walletAddress: string, postSignature?: string) => {
       console.log('🔍 FeedHomeScreen.handleUserPress: ===== USER PRESS DEBUG =====');
-      console.log('🔍 FeedHomeScreen.handleUserPress: Called with userId and walletAddress:', {userId, walletAddress});
+      console.log('🔍 FeedHomeScreen.handleUserPress: Called with userId, walletAddress, and postSignature:', {userId, walletAddress, postSignature});
       console.log('🔍 FeedHomeScreen.handleUserPress: walletAddress type:', typeof walletAddress);
       console.log('🔍 FeedHomeScreen.handleUserPress: walletAddress length:', walletAddress?.length);
       console.log('🔍 FeedHomeScreen.handleUserPress: walletAddress trimmed:', walletAddress?.trim());
       
+      // ENGAGEMENT TRACKING: Include profileVisitFrom for analytics
+      console.log('📊 FeedHomeScreen: Tracking profile visit from post:', postSignature);
+      
       // Use wallet-based navigation (userId endpoint not available)
       if (walletAddress && walletAddress.trim()) {
         console.log('🔍 FeedHomeScreen.handleUserPress: Navigating to Profile with walletAddress:', walletAddress);
-        console.log('🔍 FeedHomeScreen.handleUserPress: Navigation params:', {walletAddress});
-        navigation.navigate('Profile', {walletAddress});
+        console.log('🔍 FeedHomeScreen.handleUserPress: Navigation params:', {walletAddress, profileVisitFrom: postSignature});
+        navigation.navigate('Profile', {
+          walletAddress,
+          profileVisitFrom: postSignature // Track where the visit came from
+        });
         console.log('🔍 FeedHomeScreen.handleUserPress: Navigation call completed');
       } else {
         console.error('🚨 FeedHomeScreen.handleUserPress: No valid walletAddress provided:', {userId, walletAddress});
@@ -526,7 +540,7 @@ export default function FeedHomeScreen({navigation}: Props) {
       const feedStackScreens = [
         'Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
         'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
-        'Posts', 'Receipts', 'Watchlist', 'Points', 'Business', 'HelpCenter'
+        'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'
       ];
       
       if (feedStackScreens.includes(screen)) {

@@ -338,24 +338,38 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
 
   const handlePostPress = useCallback(
     (post: Post) => {
+      // ENGAGEMENT TRACKING: Add postExpansion=true for analytics
+      console.log('📊 SearchScreen: Tracking post expansion for engagement metrics');
+      
       // Check if this is a thread root post and route appropriately
       if (post.threadData || post.isThreadRoot || post.threadPostCount > 0) {
         console.log('🧵 SearchScreen.handlePostPress: Navigating to thread details for post:', post.id);
         navigation.navigate('ThreadDetails', {
           threadId: post.signature || post.transactionHash || post.id?.toString(),
-          post: post
+          post: post,
+          postExpansion: true // Track expansion for analytics
         });
       } else {
         console.log('📄 SearchScreen.handlePostPress: Navigating to post details for regular post:', post.id);
-        navigation.navigate('PostDetail', {postId: post.transaction_hash || post.signature || post.id, post});
+        navigation.navigate('PostDetail', {
+          postId: post.transaction_hash || post.signature || post.id, 
+          post,
+          postExpansion: true // Track expansion for analytics
+        });
       }
     },
     [navigation],
   );
 
   const handleUserPress = useCallback(
-    (walletAddress: string) => {
-      navigation.navigate('Profile', {walletAddress});
+    (userId: number | undefined | null, walletAddress: string, postSignature?: string) => {
+      // ENGAGEMENT TRACKING: Include profileVisitFrom for analytics
+      console.log('📊 SearchScreen: Tracking profile visit from post:', postSignature);
+      
+      navigation.navigate('Profile', {
+        walletAddress,
+        profileVisitFrom: postSignature // Track where the visit came from
+      });
     },
     [navigation],
   );

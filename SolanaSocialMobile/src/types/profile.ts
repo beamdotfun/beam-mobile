@@ -205,6 +205,9 @@ export interface ProfileEditData {
   // Legacy fields for compatibility
   allowDirectMessages?: boolean;
   showActivity?: boolean;
+  // Solana settings
+  explorer?: string;
+  connectionMethod?: string;
 }
 
 export interface SocialStats {

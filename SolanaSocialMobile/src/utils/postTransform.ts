@@ -48,12 +48,12 @@ export function transformProcessedPost(apiPost: any): Post {
     voteScore: (apiPost.userUpvotesReceived || 0) - (apiPost.userDownvotesReceived || 0),
     upvoteCount: apiPost.userUpvotesReceived || 0,
     downvoteCount: apiPost.userDownvotesReceived || 0,
-    replyCount: 0, // Will be updated when available in processed_posts
+    replyCount: apiPost.reply_count || apiPost.replyCount || apiPost.postReplyCount || 0,
     tipCount: apiPost.userTipsReceivedCount || 0,
     totalTipAmount: 0, // Will be calculated from tip data if available
     isPinned: false, // Will be updated when pin data is available
-    createdAt: apiPost.postProcessedAt || new Date().toISOString(),
-    updatedAt: apiPost.updatedAt || apiPost.postProcessedAt || new Date().toISOString(),
+    createdAt: apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString(),
+    updatedAt: apiPost.updatedAt || apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString(),
     
     // User object with brand prioritization
     user: {
@@ -103,12 +103,28 @@ export function transformProcessedPost(apiPost: any): Post {
     is_thread: apiPost.postIsThread || false,
     previous_thread_post: apiPost.postPreviousThreadPost || null,
     is_pinned: false, // Will be updated when pin data is available
-    quote_count: 0, // Will be updated when quote count is available
-    receipts_count: 0, // Will be updated when receipt count is available
-    view_count: 0, // Will be updated when view count is available
+    
+    // Map actual stats from backend - API returns camelCase field names per ENGAGEMENT_TRACKING_API.md
+    view_count: apiPost.postViewCount || apiPost.view_count || apiPost.viewCount || 0,
+    receipts_count: apiPost.postReceiptsCount || apiPost.receipts_count || apiPost.receiptsCount || 0,
+    expansions_count: apiPost.postExpansionsCount || apiPost.expansions_count || 0,
+    profile_visits_count: apiPost.profileVisitsCount || apiPost.profile_visits_count || 0,
+    unique_views_count: apiPost.postUniqueViewsCount || apiPost.unique_views_count || 0,
+    
+    // Also map camelCase versions for component compatibility
+    viewCount: apiPost.postViewCount || apiPost.viewCount || 0,
+    receiptsCount: apiPost.postReceiptsCount || apiPost.receiptsCount || 0,
+    expansionsCount: apiPost.postExpansionsCount || apiPost.expansionsCount || 0,
+    profileVisitsCount: apiPost.profileVisitsCount || 0,
+    uniqueViewsCount: apiPost.postUniqueViewsCount || apiPost.uniqueViewsCount || 0,
+    
+    // Quote count not mentioned in engagement docs - keep existing mapping
+    quote_count: apiPost.quote_count || apiPost.quoteCount || 0,
+    quoteCount: apiPost.quote_count || apiPost.quoteCount || 0,
+    
     signature: apiPost.postSignature, // Use postSignature from processed_posts
-    created_at: apiPost.postProcessedAt,
-    updated_at: apiPost.updatedAt || apiPost.postProcessedAt,
+    created_at: apiPost.processedAt || apiPost.postProcessedAt,
+    updated_at: apiPost.updatedAt || apiPost.processedAt || apiPost.postProcessedAt,
     
     // Quote post data - from processed_posts structure
     quoted_post: apiPost.postQuotedPost,
@@ -133,6 +149,20 @@ export function transformProcessedPost(apiPost: any): Post {
     userProfileImageUri: apiPost.userProfileImageUri,
     brandLogoUrl: apiPost.brandLogoUrl,
     profileImageUrl: apiPost.userProfileImageUri || apiPost.brandLogoUrl,
+    
+    // Quote tracking fields from POST_DATA_STRUCTURE.md
+    quoted_by: apiPost.quotedBy || apiPost.quoted_by || [],
+    quotedBy: apiPost.quotedBy || apiPost.quoted_by || [],
+    quoted_by_count: apiPost.quotedByCount || apiPost.quoted_by_count || 0,
+    quotedByCount: apiPost.quotedByCount || apiPost.quoted_by_count || 0,
+    quote_details: apiPost.quotedByDetails || apiPost.quote_details || [],
+    quotedByDetails: apiPost.quotedByDetails || apiPost.quote_details || [],
+    quotes_received_24h: apiPost.quotesReceived24h || apiPost.quotes_received_24h || 0,
+    quotesReceived24h: apiPost.quotesReceived24h || apiPost.quotes_received_24h || 0,
+    quotes_received_48h: apiPost.quotesReceived48h || apiPost.quotes_received_48h || 0,
+    quotesReceived48h: apiPost.quotesReceived48h || apiPost.quotes_received_48h || 0,
+    quotes_received_72h: apiPost.quotesReceived72h || apiPost.quotes_received_72h || 0,
+    quotesReceived72h: apiPost.quotesReceived72h || apiPost.quotes_received_72h || 0,
   };
 }
 

@@ -46,7 +46,8 @@ export type FeedStackParamList = {
     posts?: any[]; // Post[] type
   };
   UserProfile: {
-    walletAddress: string;
+    walletAddress?: string;
+    username?: string;
   };
   Profile:
     | {
@@ -93,6 +94,7 @@ export type FeedStackParamList = {
   Posts: undefined;
   Receipts: undefined;
   Watchlist: undefined;
+  Tokens: undefined;
   Points: undefined;
   Business: undefined;
   HelpCenter: undefined;
@@ -109,6 +111,7 @@ export type FeedStackParamList = {
     currentUsername?: string;
   };
   EditProfilePicture: undefined;
+  NFTSelection: undefined;
   BuySOL: undefined;
   ThreadSend: {
     threadPosts: Array<{
@@ -118,6 +121,7 @@ export type FeedStackParamList = {
     }>;
     threadTitle?: string;
   };
+  TransferDemo: undefined;
 };
 
 export type DiscoverStackParamList = {
