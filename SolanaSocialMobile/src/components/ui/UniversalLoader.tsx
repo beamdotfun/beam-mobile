@@ -94,14 +94,6 @@ export function UniversalLoader({
 }
 
 // Quick replacement components for common patterns
-export function ScreenLoader({ title = 'Loading...', message }: { title?: string; message?: string }) {
-  return <UniversalLoader type="skeleton" title={title} message={message} />;
-}
-
 export function InlineLoader({ title = 'Loading...', message }: { title?: string; message?: string }) {
   return <UniversalLoader type="inline" title={title} message={message} />;
-}
-
-export function MiniLoader({ title = 'Loading...' }: { title?: string }) {
-  return <UniversalLoader type="mini" title={title} />;
 }

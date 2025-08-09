@@ -855,21 +855,36 @@ export const useNotificationStore = create<NotificationState>()(
           ]);
 
         if (notificationsData) {
-          const notifications = JSON.parse(notificationsData);
-          const unreadCount = notifications.filter(
-            (n: BaseNotification) => !n.read,
-          ).length;
-          set({notifications, unreadCount});
+          try {
+            const notifications = JSON.parse(notificationsData);
+            const unreadCount = notifications.filter(
+              (n: BaseNotification) => !n.read,
+            ).length;
+            set({notifications, unreadCount});
+          } catch (parseError) {
+            console.error('Failed to parse notifications:', parseError);
+            await AsyncStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS);
+          }
         }
 
         if (preferencesData) {
-          const preferences = JSON.parse(preferencesData);
-          set({preferences: {...DEFAULT_PREFERENCES, ...preferences}});
+          try {
+            const preferences = JSON.parse(preferencesData);
+            set({preferences: {...DEFAULT_PREFERENCES, ...preferences}});
+          } catch (parseError) {
+            console.error('Failed to parse preferences:', parseError);
+            await AsyncStorage.removeItem(STORAGE_KEYS.PREFERENCES);
+          }
         }
 
         if (fcmTokensData) {
-          const fcmTokens = JSON.parse(fcmTokensData);
-          set({fcmTokens});
+          try {
+            const fcmTokens = JSON.parse(fcmTokensData);
+            set({fcmTokens});
+          } catch (parseError) {
+            console.error('Failed to parse FCM tokens:', parseError);
+            await AsyncStorage.removeItem(STORAGE_KEYS.FCM_TOKENS);
+          }
         }
       } catch (error) {
         console.error('Failed to load notifications from storage:', error);

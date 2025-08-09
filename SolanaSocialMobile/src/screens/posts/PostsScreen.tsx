@@ -166,8 +166,13 @@ export default function PostsScreen({navigation}: PostsScreenProps) {
   // Handle refresh for drafts tab
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadDrafts(), loadThreads()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([loadDrafts(), loadThreads()]);
+    } catch (error) {
+      console.error('Failed to refresh posts:', error);
+    } finally {
+      setRefreshing(false);
+    }
   }, [loadDrafts, loadThreads]);
 
   // Enhanced refresh with haptic feedback

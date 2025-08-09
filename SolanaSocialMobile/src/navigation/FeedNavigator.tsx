@@ -6,9 +6,9 @@ import {FeedStackParamList} from '../types/navigation';
 import FeedHomeScreen from '../screens/feed/FeedHomeScreen';
 import PostDetailScreen from '../screens/post/PostDetailScreen';
 import ThreadDetailsScreen from '../screens/thread/ThreadDetailsScreen';
-import UserProfileScreen from '../screens/feed/UserProfileScreen';
 import CreatePostScreen from '../screens/feed/CreatePostScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import ReputationScreen from '../screens/profile/ReputationScreen';
 // Sidebar menu screens
 import PostsScreen from '../screens/posts/PostsScreen';
@@ -62,26 +62,41 @@ export default function FeedNavigator() {
       />
       <Stack.Screen
         name="UserProfile"
-        component={UserProfileScreen}
         options={{
           headerShown: false,
         }}
-      />
+      >
+        {(props) => (
+          <ErrorBoundary>
+            <ProfileScreen {...props} />
+          </ErrorBoundary>
+        )}
+      </Stack.Screen>
       <Stack.Screen
         name="Profile"
-        component={ProfileScreen}
         options={{
           headerShown: false,
         }}
-      />
+      >
+        {(props) => (
+          <ErrorBoundary>
+            <ProfileScreen {...props} />
+          </ErrorBoundary>
+        )}
+      </Stack.Screen>
       <Stack.Screen
         name="CreatePost"
-        component={CreatePostScreen}
         options={{
           headerShown: false,
           presentation: 'modal',
         }}
-      />
+      >
+        {(props) => (
+          <ErrorBoundary>
+            <CreatePostScreen {...props} />
+          </ErrorBoundary>
+        )}
+      </Stack.Screen>
       <Stack.Screen
         name="Reputation"
         component={ReputationScreen}

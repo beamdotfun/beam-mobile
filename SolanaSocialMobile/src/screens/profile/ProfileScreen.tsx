@@ -46,9 +46,12 @@ import {getAvatarFallback} from '../../lib/utils';
 import {badgeAPI, BadgeResponse} from '../../services/api/badges';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import {getProfilePictureUrl, getUserProfilePicture} from '../../utils/profileUtils';
+import {logMemoryUsage, isMemoryUsageCritical, forceGarbageCollection} from '../../utils/memoryUtils';
 import {ProfileSkeleton} from '../../components/loading/FeedSkeleton';
 import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
 import {Skeleton} from '../../components/ui/Skeleton';
+import {debouncedNavigate} from '../../utils/navigationUtils';
+import {useScreenCleanup} from '../../hooks/useScreenCleanup';
 
 const {width} = Dimensions.get('window');
 
@@ -70,6 +73,10 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
   console.log('🔍 ProfileScreen: Route name:', route.name);
   console.log('🔍 ProfileScreen: Navigation available:', !!navigation);
   console.log('🔍 ProfileScreen: Component mount timestamp:', new Date().toISOString());
+  
+  // Automatic memory cleanup on unmount
+  const isMountedRef = useScreenCleanup('ProfileScreen');
+  const loadingInProgressRef = useRef(false);
   
   const {colors} = useThemeStore();
   const {user} = useAuthStore();
@@ -102,8 +109,8 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
                            user?.walletAddress ||
                            user?.wallet_address; // Add wallet_address for compatibility with PostCard
   
-  // Get wallet address from route params
-  const routeWalletAddress = route.params?.walletAddress;
+  // Get wallet address from route params (use username as fallback if no walletAddress provided)
+  const routeWalletAddress = route.params?.walletAddress || route.params?.username;
   
   // Debug the route params types and values
   console.log('🔍 ProfileScreen DEBUG: Raw route params types:', {
@@ -253,12 +260,16 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
         // For own profile, use authenticated endpoint
         console.log('🔍 ProfileScreen: Loading own badges via authenticated endpoint');
         const badgesData = await badgeAPI.getUserBadges();
-        badges = badgesData.badges.filter(badge => badge.earned && badge.display_enabled);
+        // Limit badges to prevent memory issues
+        badges = badgesData.badges
+          .filter(badge => badge.earned && badge.display_enabled)
+          .slice(0, 10); // Limit to 10 badges max
       } else {
         // For other users, use public endpoint
         console.log('🔍 ProfileScreen: Loading public badges for:', targetWalletAddress);
         const publicBadgesData = await badgeAPI.getPublicBadges(targetWalletAddress);
-        badges = publicBadgesData.badges;
+        // Limit badges to prevent memory issues
+        badges = publicBadgesData.badges.slice(0, 10); // Limit to 10 badges max
       }
       
       console.log('🔍 ProfileScreen: Badges loaded successfully');
@@ -269,7 +280,8 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
       
     } catch (error) {
       console.error('🚨 ProfileScreen: Failed to load badges:', error);
-      setUserBadges([]); // Clear badges on error
+      // Don't crash on badge loading errors - just show no badges
+      setUserBadges([]);
     } finally {
       setBadgesLoading(false);
     }
@@ -277,37 +289,91 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
 
   useEffect(() => {
     console.log('🔍 ProfileScreen useEffect: Running with params:', {routeWalletAddress, targetWalletAddress, isOwnProfile});
+    logMemoryUsage('ProfileScreen - Component Mount');
     
-    // Clear any existing profile data first to prevent showing wrong user
-    if (routeWalletAddress && !isOwnProfile) {
-      console.log('🔍 ProfileScreen: Clearing profile data before loading new user');
-      // Clear the profile immediately to prevent showing old data
-      useProfileStore.setState({ currentProfile: null, userPosts: [], socialStats: null });
+    // Check memory before loading data
+    if (isMemoryUsageCritical()) {
+      console.warn('⚠️ ProfileScreen: Memory usage is critical - forcing cleanup');
+      forceGarbageCollection();
     }
     
-    // Load profile data with tracking parameter
-    const profileVisitFrom = route.params?.profileVisitFrom;
-    if (profileVisitFrom) {
-      console.log('📊 ProfileScreen: Loading profile with visit tracking from post:', profileVisitFrom);
-    }
-    loadProfile(routeWalletAddress, profileVisitFrom).then(() => {
-      console.log('🔍 ProfileScreen: loadProfile completed successfully');
-    }).catch(error => {
-      console.error('🚨 ProfileScreen: Error loading profile:', error);
-    });
+    let isCancelled = false;
     
-    // Load user posts for the target wallet
-    if (targetWalletAddress) {
-      console.log('🔍 ProfileScreen: Loading user posts for walletAddress:', targetWalletAddress);
-      loadUserPosts(targetWalletAddress, true).then(() => {
-        console.log('🔍 ProfileScreen: loadUserPosts completed successfully');
-      }).catch(error => {
-        console.error('🚨 ProfileScreen: Error loading user posts:', error);
-      });
+    const loadProfileData = async () => {
+      // Prevent duplicate loads
+      if (loadingInProgressRef.current) {
+        console.log('⚠️ ProfileScreen: Load already in progress, skipping duplicate');
+        return;
+      }
       
-      // Load badges for this user
-      loadUserBadges(targetWalletAddress);
-    }
+      loadingInProgressRef.current = true;
+      
+      try {
+        // Clear any existing profile data first to prevent showing wrong user
+        if (routeWalletAddress && !isOwnProfile) {
+          console.log('🔍 ProfileScreen: Clearing profile data before loading new user');
+          if (isMountedRef.current) {
+            useProfileStore.setState({ currentProfile: null, userPosts: [], socialStats: null });
+          }
+        }
+        
+        // Load profile data with tracking parameter
+        const profileVisitFrom = route.params?.profileVisitFrom;
+        if (profileVisitFrom) {
+          console.log('📊 ProfileScreen: Loading profile with visit tracking from post:', profileVisitFrom);
+        }
+        
+        // Load profile first
+        if (!isCancelled && isMountedRef.current) {
+          console.log('🔍 ProfileScreen: Loading profile...');
+          await loadProfile(routeWalletAddress, profileVisitFrom);
+          console.log('🔍 ProfileScreen: loadProfile completed successfully');
+        }
+        
+        // Only load additional data if profile loaded successfully
+        if (targetWalletAddress && !isCancelled && isMountedRef.current) {
+          // Add small delay to prevent memory overload
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          console.log('🔍 ProfileScreen: Loading user posts for walletAddress:', targetWalletAddress);
+          await loadUserPosts(targetWalletAddress, true);
+          console.log('🔍 ProfileScreen: loadUserPosts completed successfully');
+          
+          // Load badges with another small delay
+          if (!isCancelled && isMountedRef.current) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await loadUserBadges(targetWalletAddress);
+          }
+        }
+      } catch (error) {
+        if (!isCancelled && isMountedRef.current) {
+          console.error('🚨 ProfileScreen: Error loading profile data:', error);
+          // Set a user-friendly error instead of crashing
+          useProfileStore.setState({ 
+            error: 'Unable to load profile. Please try again.', 
+            loading: false 
+          });
+        }
+      } finally {
+        loadingInProgressRef.current = false;
+      }
+    };
+    
+    loadProfileData();
+    
+    // Cleanup function to prevent memory leaks
+    return () => {
+      isCancelled = true;
+      isMountedRef.current = false;
+      loadingInProgressRef.current = false;
+      logMemoryUsage('ProfileScreen - Component Cleanup');
+      
+      // Clear posts to free memory when leaving profile
+      if (!isOwnProfile) {
+        console.log('🧹 ProfileScreen: Clearing posts on unmount to free memory');
+        useProfileStore.setState({ userPosts: [] });
+      }
+    };
   }, [routeWalletAddress, targetWalletAddress, isOwnProfile]);
 
   // Check following status when component mounts or wallet changes
@@ -1018,7 +1084,8 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
       }
     } else if (screen === 'Profile') {
       // Profile exists in Feed navigator, navigate to UserProfile (both use ProfileScreen component)
-      navigation.navigate('UserProfile', params);
+      // Use debounced navigation to prevent rapid navigation
+      debouncedNavigate(navigation, 'UserProfile', params);
     } else {
       console.log(`Navigate to ${screen}`, params);
     }
@@ -1240,7 +1307,7 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
                     } as BadgeResponse] : []),
                   ]}
                   renderItem={renderBadge}
-                  keyExtractor={item => item.id.toString()}
+                  keyExtractor={item => item?.id?.toString() || `badge-${Math.random()}`}
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.badgeScrollView}
@@ -1649,9 +1716,9 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
             </View>
           ) : (
             <FlatList
-              data={userPosts.filter(post => !post.isPinned)}
+              data={Array.isArray(userPosts) ? userPosts.filter(post => !post.isPinned) : []}
               renderItem={renderPost}
-              keyExtractor={(item, index) => `${item.id}-${index}`}
+              keyExtractor={(item, index) => item?.id ? `${item.id}-${index}` : `post-${index}`}
               showsVerticalScrollIndicator={false}
               scrollEnabled={false}
               nestedScrollEnabled={true}

@@ -80,25 +80,32 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
       }
       
       // Load trending posts based on selected tab
-      if (loadFeed) {
+      if (loadFeed && typeof loadFeed === 'function') {
         try {
           const currentTabIndex = tabIndex !== undefined ? tabIndex : selectedTrendingTab;
           const tabConfig = trendingTabMap[currentTabIndex as keyof typeof trendingTabMap];
           
-          if (tabConfig.sortBy === 'tokens') {
+          if (tabConfig?.sortBy === 'tokens') {
             // For "Tokens" tab, don't load any posts (coming soon)
+            console.log('Tokens tab selected - no content to load yet');
             return;
-          } else if (tabConfig.sortBy === 'controversial') {
+          } else if (tabConfig?.sortBy === 'controversial') {
             // For "Controversial" tab, use controversial feed endpoint
+            console.log('Loading controversial feed...');
             await loadFeed(true, 'controversial', tabConfig.timeRange as 'hour' | 'day' | 'week');
-          } else {
+          } else if (tabConfig?.sortBy === 'trending') {
             // For "Trending" tab, use trending with time range
+            console.log('Loading trending feed...');
             await loadFeed(true, 'trending', tabConfig.timeRange as 'hour' | 'day' | 'week');
+          } else {
+            console.warn('Unknown tab config:', tabConfig);
           }
         } catch (feedError) {
           console.error('Failed to load feed:', feedError);
           // Continue execution even if feed fails
         }
+      } else {
+        console.warn('loadFeed function is not available from socialStore');
       }
       
     } catch (err) {
@@ -898,7 +905,13 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
                   <Pressable
                     key={`user-${user.id || index}`}
                     style={styles.userResult}
-                    onPress={() => handleUserPress(user.walletAddress)}
+                    onPress={() => {
+                      if (user.walletAddress) {
+                        handleUserPress(null, user.walletAddress);
+                      } else {
+                        console.warn('User has no wallet address:', user);
+                      }
+                    }}
                   >
                     <Avatar
                       src={user.avatarUrl}
@@ -1033,19 +1046,24 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
                   <Text style={styles.sectionTitle}>Trending Topics</Text>
                 </View>
                 <View style={styles.trendingTopicsContainer}>
-                  {(trendingTopics || []).slice(0, 5).map((topic, index) => (
-                    topic ? (
-                      <Pressable key={`topic-${topic.id || index}-${index}`} style={styles.trendingTopic}>
-                        <Hash size={16} color={colors.primary} style={styles.trendingTopicIcon} />
-                        <View style={styles.trendingTopicInfo}>
-                          <Text style={styles.trendingTopicName}>{topic.name || 'Unknown'}</Text>
-                          <Text style={styles.trendingTopicStats}>
-                            {topic.postCount || 0} posts • {topic.participantCount || 0} participants
-                          </Text>
-                        </View>
-                      </Pressable>
-                    ) : null
-                  ))}
+                  {Array.isArray(trendingTopics) && trendingTopics.length > 0 ? (
+                    trendingTopics.slice(0, 5).map((topic, index) => {
+                      // Skip null/undefined topics
+                      if (!topic || !topic.name) return null;
+                      
+                      return (
+                        <Pressable key={`topic-${topic.id || index}-${index}`} style={styles.trendingTopic}>
+                          <Hash size={16} color={colors.primary} style={styles.trendingTopicIcon} />
+                          <View style={styles.trendingTopicInfo}>
+                            <Text style={styles.trendingTopicName}>{topic.name}</Text>
+                            <Text style={styles.trendingTopicStats}>
+                              {topic.postCount || 0} posts • {topic.participantCount || 0} participants
+                            </Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })
+                  ) : null}
                 </View>
               </View>
             )}
@@ -1086,20 +1104,31 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
                     </View>
                   ) : (
                     // Trending and Controversial tabs - show posts
-                    (trendingPosts || []).slice(0, 10).map((post, index) => (
-                      post ? (
-                        <PostCard
-                          key={`post-${post.id || index}-${index}`}
-                          post={post}
-                          onPress={() => handlePostPress(post)}
-                          onUserPress={handleUserPress}
-                          onQuotePress={handleQuotePost}
-                          onThreadPress={handleThreadPress}
-                          onQuotedPostPress={handleQuotedPostPress}
-                          feedContext={selectedTrendingTab === 0 ? 'trending' : selectedTrendingTab === 1 ? 'controversial' : 'default'}
-                        />
-                      ) : null
-                    ))
+                    Array.isArray(trendingPosts) && trendingPosts.length > 0 ? (
+                      trendingPosts.slice(0, 10).map((post, index) => {
+                        // Skip null/undefined posts
+                        if (!post || !post.id) return null;
+                        
+                        return (
+                          <PostCard
+                            key={`post-${post.id}-${index}`}
+                            post={post}
+                            onPress={() => handlePostPress(post)}
+                            onUserPress={handleUserPress}
+                            onQuotePress={handleQuotePost}
+                            onThreadPress={handleThreadPress}
+                            onQuotedPostPress={handleQuotedPostPress}
+                            feedContext={selectedTrendingTab === 0 ? 'trending' : selectedTrendingTab === 1 ? 'controversial' : 'default'}
+                          />
+                        );
+                      })
+                    ) : (
+                      <View style={styles.emptyState}>
+                        <Text style={styles.emptyStateText}>
+                          No {selectedTrendingTab === 0 ? 'trending' : 'controversial'} posts available
+                        </Text>
+                      </View>
+                    )
                   )}
                 </View>
               </View>

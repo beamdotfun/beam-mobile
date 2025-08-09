@@ -31,12 +31,26 @@ export class PerformanceOptimizer {
   }
 
   /**
-   * Stop performance monitoring
+   * Stop performance monitoring and cleanup intervals
    */
   static stopMonitoring() {
     if (this.performanceObserver) {
       this.performanceObserver.disconnect();
       this.performanceObserver = null;
+    }
+    
+    // Clean up intervals
+    if ((global as any).__memoryMonitorInterval) {
+      clearInterval((global as any).__memoryMonitorInterval);
+      delete (global as any).__memoryMonitorInterval;
+    }
+    if ((global as any).__systemMonitorInterval) {
+      clearInterval((global as any).__systemMonitorInterval);
+      delete (global as any).__systemMonitorInterval;
+    }
+    if ((global as any).__frameRateInterval) {
+      cancelAnimationFrame((global as any).__frameRateInterval);
+      delete (global as any).__frameRateInterval;
     }
   }
 
@@ -113,7 +127,8 @@ export class PerformanceOptimizer {
       });
     };
 
-    setInterval(checkMemory, 2000); // Check every 2 seconds
+    const memoryInterval = setInterval(checkMemory, 2000); // Check every 2 seconds
+    (global as any).__memoryMonitorInterval = memoryInterval;
   }
 
   /**
@@ -131,7 +146,8 @@ export class PerformanceOptimizer {
       });
     };
 
-    setInterval(checkSystemState, 5000); // Check every 5 seconds
+    const systemInterval = setInterval(checkSystemState, 5000); // Check every 5 seconds
+    (global as any).__systemMonitorInterval = systemInterval;
   }
 
   /**

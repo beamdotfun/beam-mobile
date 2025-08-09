@@ -125,7 +125,9 @@ export const NotificationsScreen: React.FC = () => {
       return [];
     }
 
-    let filtered = notificationSystem.notifications;
+    let filtered = Array.isArray(notificationSystem?.notifications) 
+      ? notificationSystem.notifications 
+      : [];
 
     switch (selectedTab) {
       case 'unread':

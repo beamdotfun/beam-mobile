@@ -105,7 +105,7 @@ export default function ApiTestScreen() {
       </View>
 
       <ScrollView style={styles.results}>
-        {testResults.map((result, index) => (
+        {Array.isArray(testResults) && testResults.map((result, index) => (
           <Text key={index} style={styles.resultText}>
             {result}
           </Text>

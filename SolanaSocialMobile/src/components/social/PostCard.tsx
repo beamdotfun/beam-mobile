@@ -74,10 +74,21 @@ export function PostCard({
   const [toastMessage, setToastMessage] = useState('');
   
   // Video player states
-  const [isVideoPlaying, setIsVideoPlaying] = useState(true); // Autoplay by default
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false); // Don't autoplay to save memory
   const [isVideoMuted, setIsVideoMuted] = useState(true); // Muted by default for autoplay
   const [showVideoControls, setShowVideoControls] = useState(false);
-  const videoRef = useRef(null);
+  const videoRef = useRef<any>(null);
+  
+  // Cleanup video on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        // Stop and cleanup video
+        setIsVideoPlaying(false);
+        videoRef.current = null;
+      }
+    };
+  }, []);
   const [toastType, setToastType] = useState<
     'success' | 'error' | 'warning' | 'info'
   >('info');
@@ -89,6 +100,8 @@ export function PostCard({
 
   // Resolve mentions when the post loads for better performance
   useEffect(() => {
+    let isCancelled = false;
+    
     const resolveMentionsInPost = async () => {
       if (!post.message) return;
       
@@ -100,19 +113,27 @@ export function PostCard({
         const uniqueMentions = [...new Set(mentionMatches.map(m => m.slice(1)))]; // Remove @ symbol
         const resolution = await socialAPI.resolveMentions(uniqueMentions);
         
-        const mentionMap = new Map();
-        resolution.resolvedMentions.forEach(resolved => {
-          mentionMap.set(resolved.originalMention, resolved);
-        });
-        
-        setResolvedMentions(mentionMap);
-        console.log('🔗 PostCard: Pre-resolved mentions for post:', post.id, 'count:', mentionMap.size);
+        if (!isCancelled) {
+          const mentionMap = new Map();
+          resolution.resolvedMentions.forEach(resolved => {
+            mentionMap.set(resolved.originalMention, resolved);
+          });
+          
+          setResolvedMentions(mentionMap);
+          console.log('🔗 PostCard: Pre-resolved mentions for post:', post.id, 'count:', mentionMap.size);
+        }
       } catch (error) {
-        console.error('❌ PostCard: Error pre-resolving mentions:', error);
+        if (!isCancelled) {
+          console.error('❌ PostCard: Error pre-resolving mentions:', error);
+        }
       }
     };
 
     resolveMentionsInPost();
+    
+    return () => {
+      isCancelled = true;
+    };
   }, [post.message, post.id]);
   
   // Get post signature for receipts with validation
@@ -1036,6 +1057,8 @@ export function PostCard({
             muted={isVideoMuted}
             repeat={true} // Loop the video
             resizeMode="cover"
+            removeClippedSubviews={true} // Important for memory management
+            poster={images[0]} // Use first image as poster if available
             onError={(error) => {
               console.error('🎥 Video playback error:', {
                 error,

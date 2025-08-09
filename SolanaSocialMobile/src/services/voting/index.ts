@@ -1,1 +1,0 @@
-export {votingService} from './votingService';

@@ -25,6 +25,7 @@ import {useAuthStore} from '../../store/auth';
 import {useWalletStore} from '../../store/wallet';
 import {useWatchlist} from '../../hooks/useWatchlist';
 import {getAvatarFallback} from '../../lib/utils';
+import {useScreenCleanup} from '../../hooks/useScreenCleanup';
 
 interface WatchlistUser {
   walletAddress: string;
@@ -43,6 +44,9 @@ interface WatchlistScreenProps {
 }
 
 export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
+  // Automatic memory cleanup on unmount
+  useScreenCleanup('WatchlistScreen');
+  
   const {colors} = useThemeStore();
   const {user} = useAuthStore();
   const {connected} = useWalletStore();
@@ -71,10 +75,17 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
   // Load watchlist users on mount - use setTimeout to not block initial render
   useEffect(() => {
     console.log('🔄 WatchlistScreen: Loading watchlist members on mount');
+    let timeoutId: NodeJS.Timeout;
+    
     // Defer data loading to next tick to allow UI to render first
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       loadWatchlistMembers();
     }, 0);
+    
+    // Cleanup on unmount
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []); // Remove dependency to prevent re-runs
 
   const handleRefresh = useCallback(async () => {
@@ -664,9 +675,9 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
       {activeTab === 'users' ? (
         <FlatList
           style={styles.content}
-          data={followingList}
+          data={Array.isArray(followingList) ? followingList : []}
           renderItem={renderUserCard}
-          keyExtractor={item => item.walletAddress}
+          keyExtractor={item => item.walletAddress || `user-${Math.random()}`}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

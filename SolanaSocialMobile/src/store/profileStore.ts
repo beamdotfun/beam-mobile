@@ -22,6 +22,11 @@ interface ProfileState {
   postsLoading: boolean;
   activityLoading: boolean;
   error: string | null;
+  
+  // Load tracking to prevent duplicates
+  lastLoadedWallet: string | null;
+  lastLoadTime: number;
+  loadInProgress: boolean;
 
   // Pagination
   postsPage: number;
@@ -60,6 +65,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   postsLoading: false,
   activityLoading: false,
   error: null,
+  lastLoadedWallet: null,
+  lastLoadTime: 0,
+  loadInProgress: false,
   postsPage: 1,
   postsHasMore: true,
   activityPage: 1,
@@ -69,8 +77,25 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   loadProfile: async (walletAddress?: string, profileVisitFrom?: string) => {
     console.log('🔍 ProfileStore.loadProfile: Starting with walletAddress:', walletAddress, 'profileVisitFrom:', profileVisitFrom);
     
+    const currentState = get();
+    const now = Date.now();
+    
+    // Prevent duplicate loads of the same profile within 500ms
+    if (currentState.loadInProgress) {
+      console.log('⚠️ ProfileStore.loadProfile: Load already in progress, skipping');
+      return;
+    }
+    
+    // Check if we just loaded this exact wallet recently
+    if (walletAddress && 
+        walletAddress === currentState.lastLoadedWallet && 
+        (now - currentState.lastLoadTime) < 500) {
+      console.log('⚠️ ProfileStore.loadProfile: Same wallet loaded recently, skipping duplicate');
+      return;
+    }
+    
     // Check if we're switching to a different user profile - if so, clear all data
-    const currentProfileWallet = get().currentProfile?.userWallet;
+    const currentProfileWallet = currentState.currentProfile?.userWallet;
     const isSwitchingUsers = walletAddress && currentProfileWallet && currentProfileWallet !== walletAddress;
     
     console.log('🔍 ProfileStore.loadProfile: User switching check:', {
@@ -94,7 +119,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       });
     }
     
-    set({loading: true, error: null});
+    set({loading: true, error: null, loadInProgress: true});
 
     try {
       // Check if this is the current user's own profile
@@ -212,6 +237,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         currentProfile: userProfile,
         socialStats: stats,
         loading: false,
+        loadInProgress: false,
+        lastLoadedWallet: walletAddress || null,
+        lastLoadTime: Date.now(),
       });
       
       console.log('🔍 ProfileStore.loadProfile: Profile loaded successfully');
@@ -224,6 +252,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       });
       set({
         loading: false,
+        loadInProgress: false,
         error: 'Failed to load profile. Please try again.',
       });
     }
@@ -456,8 +485,12 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         postsPage: get().postsPage
       });
       
-      // Check if it's a 404 or no posts found - don't treat as error
-      if (error?.message?.includes('404') || error?.message?.includes('not found')) {
+      // Enhanced error handling to prevent crashes
+      let errorMessage = 'Unable to load posts. Please try again.';
+      
+      if (error?.message?.includes('timeout')) {
+        errorMessage = 'Loading posts is taking too long. Please try again.';
+      } else if (error?.message?.includes('404') || error?.message?.includes('not found')) {
         console.log('🔍 ProfileStore.loadUserPosts: User has no posts yet (404) - setting empty array');
         set({
           userPosts: [],
@@ -465,12 +498,20 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
           postsHasMore: false,
           error: null, // Clear error for empty posts case
         });
-      } else {
-        set({
-          postsLoading: false,
-          error: 'Failed to load posts.',
-        });
+        return; // Early return for 404 case
+      } else if (error?.message?.includes('OutOfMemoryError') || error?.message?.includes('memory')) {
+        errorMessage = 'Not enough memory to load posts. Please close other apps and try again.';
+        // Force garbage collection if possible
+        if (global.gc) {
+          console.log('🚨 ProfileStore: Forcing garbage collection due to memory error');
+          global.gc();
+        }
       }
+      
+      set({
+        postsLoading: false,
+        error: errorMessage,
+      });
     }
   },
 

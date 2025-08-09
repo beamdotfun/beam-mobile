@@ -868,7 +868,7 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
             ) : (
               <FlatList
                 data={quotePosts}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item) => item?.id || `quote-${Math.random()}`}
                 renderItem={({item}) => (
                   <View style={styles.quoteCard}>
                     <PostCard

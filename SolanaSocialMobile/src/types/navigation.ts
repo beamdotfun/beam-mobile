@@ -48,12 +48,13 @@ export type FeedStackParamList = {
   UserProfile: {
     walletAddress?: string;
     username?: string;
+    profileVisitFrom?: string;
   };
-  Profile:
-    | {
-        walletAddress?: string;
-      }
-    | undefined;
+  Profile: {
+    walletAddress?: string;
+    username?: string;
+    profileVisitFrom?: string;
+  };
   Reputation: {
     walletAddress: string;
   };

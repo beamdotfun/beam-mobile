@@ -400,7 +400,7 @@ export class SocialAPIService {
       });
     }
 
-    // Return data in format expected by UserProfileScreen
+    // Return data in format expected by ProfileScreen
     return {
       posts: response.data.data?.posts || [],
       pagination: response.data.data?.pagination || {},

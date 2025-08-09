@@ -102,14 +102,16 @@ export default function CreatePostScreen({navigation, route}: Props) {
     isSIWSAuthenticated,
   } = walletConnection;
 
-  // Debug logging for wallet connection issues
-  console.log('🔍 CreatePostScreen: Wallet connection debug', {
-    hasPublicKey: !!publicKey,
-    publicKeyString: publicKey?.toString(),
-    isPrimaryWalletConnected,
-    isSIWSAuthenticated,
-    walletWarningType: getWalletWarningType(),
-  });
+  // Debug logging for wallet connection issues (throttled to prevent spam)
+  React.useEffect(() => {
+    console.log('🔍 CreatePostScreen: Wallet connection debug', {
+      hasPublicKey: !!publicKey,
+      publicKeyString: publicKey?.toString(),
+      isPrimaryWalletConnected,
+      isSIWSAuthenticated,
+      walletWarningType: getWalletWarningType(),
+    });
+  }, [publicKey, isPrimaryWalletConnected, isSIWSAuthenticated]); // Only log when these actually change
 
   // Auto-dismiss status messages after 10 seconds
   useEffect(() => {
@@ -126,9 +128,9 @@ export default function CreatePostScreen({navigation, route}: Props) {
   useEffect(() => {
     if (!loadDraft && !quotedPost) {
       // This is a fresh create post - clear any existing draft
-      clearDraft();
+      usePostCreationStore.getState().clearDraft();
     }
-  }, [loadDraft, quotedPost, clearDraft]);
+  }, [loadDraft, quotedPost]); // Remove clearDraft from dependencies
 
   // Load draft if coming from drafts page
   useEffect(() => {
@@ -182,8 +184,8 @@ export default function CreatePostScreen({navigation, route}: Props) {
 
   // Load fee estimate on mount
   useEffect(() => {
-    estimatePostingFee();
-  }, [estimatePostingFee]);
+    usePostCreationStore.getState().estimatePostingFee();
+  }, []); // Remove estimatePostingFee from dependencies, only run on mount
 
   // Check wallet balance when primary wallet is properly connected
   useEffect(() => {
@@ -1277,24 +1279,37 @@ export default function CreatePostScreen({navigation, route}: Props) {
               <View style={styles.quotedPostCard}>
                 <View style={styles.quotedPostHeader}>
                   <Avatar
-                    src={quotedPost.user.profilePicture}
-                    fallback={quotedPost.user.name?.charAt(0) || 'U'}
+                    src={quotedPost.user?.profilePicture || quotedPost.user?.avatar_url}
+                    fallback={quotedPost.user?.name?.charAt(0) || quotedPost.user?.display_name?.charAt(0) || 'U'}
                     size="sm"
-                    showRing={quotedPost.user.isVerified}
+                    showRing={quotedPost.user?.isVerified || quotedPost.user?.is_verified}
                     ringColor={colors.success}
                   />
                   <View style={styles.quotedPostUserInfo}>
                     <Text style={styles.quotedPostUsername}>
-                      {quotedPost.user.name || 'Unknown'}
+                      {quotedPost.user?.name || quotedPost.user?.display_name || 'Unknown'}
                     </Text>
                     <Text style={styles.quotedPostHandle}>
-                      @{quotedPost.userWallet.slice(0, 8)}...
+                      @{(quotedPost.userWallet || quotedPost.user?.walletAddress || quotedPost.user?.wallet_address || 'unknown')?.slice(0, 8)}...
                     </Text>
                   </View>
                 </View>
                 <Text style={styles.quotedPostMessage} numberOfLines={3}>
-                  {quotedPost.message}
+                  {quotedPost.message || 'No content'}
                 </Text>
+                {/* Show media indicator for posts with media */}
+                {(quotedPost.mediaUrls?.length > 0 || quotedPost.images?.length > 0 || quotedPost.video) && (
+                  <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 8, opacity: 0.7}}>
+                    {quotedPost.video || quotedPost.mediaUrls?.some((url: string) => url.includes('.mp4')) ? (
+                      <Video size={14} color={colors.mutedForeground} style={{marginRight: 4}} />
+                    ) : (
+                      <Image size={14} color={colors.mutedForeground} style={{marginRight: 4}} />
+                    )}
+                    <Text style={{fontSize: 12, color: colors.mutedForeground}}>
+                      {quotedPost.video || quotedPost.mediaUrls?.some((url: string) => url.includes('.mp4')) ? 'Video attached' : 'Photo attached'}
+                    </Text>
+                  </View>
+                )}
                 {quotedPost.createdAt && (
                   <Text style={styles.quotedPostTime}>
                     {new Date(quotedPost.createdAt).toLocaleDateString()}

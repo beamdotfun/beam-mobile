@@ -40,6 +40,8 @@ import {StyledLoadMoreIndicator} from '../../components/ui/StyledLoadMoreIndicat
 import {FeedStackScreenProps} from '../../types/navigation';
 import {Post} from '../../types/social';
 import {getAvatarFallback} from '../../lib/utils';
+import {debouncedNavigate} from '../../utils/navigationUtils';
+import {useScreenCleanup} from '../../hooks/useScreenCleanup';
 
 type Props = FeedStackScreenProps<'FeedHome'>;
 
@@ -48,6 +50,9 @@ export default function FeedHomeScreen({navigation}: Props) {
   const {publicKey, connectionStatus} = useWalletStore();
   const {isAuthenticated, token, user, isRehydrated} = useAuthStore();
   const insets = useSafeAreaInsets();
+  
+  // Automatic memory cleanup on unmount
+  useScreenCleanup('FeedHomeScreen');
   const feedTypes = ['For You', 'Recent', 'Watchlist'];
   const feedTypeMap = {
     0: 'for-you' as const,
@@ -297,8 +302,8 @@ export default function FeedHomeScreen({navigation}: Props) {
 
   // Handle brand profile navigation
   const handleBrandPress = useCallback((brandWallet: string) => {
-    // Navigate to brand profile (similar to user profile)
-    navigation.navigate('Profile', { walletAddress: brandWallet });
+    // Navigate to brand profile (similar to user profile) with debouncing
+    debouncedNavigate(navigation, 'Profile', { walletAddress: brandWallet });
   }, [navigation]);
 
   // Handle hashtag press in billboard ads
@@ -469,15 +474,15 @@ export default function FeedHomeScreen({navigation}: Props) {
       // ENGAGEMENT TRACKING: Include profileVisitFrom for analytics
       console.log('📊 FeedHomeScreen: Tracking profile visit from post:', postSignature);
       
-      // Use wallet-based navigation (userId endpoint not available)
+      // Use wallet-based navigation (userId endpoint not available) with debouncing
       if (walletAddress && walletAddress.trim()) {
         console.log('🔍 FeedHomeScreen.handleUserPress: Navigating to Profile with walletAddress:', walletAddress);
         console.log('🔍 FeedHomeScreen.handleUserPress: Navigation params:', {walletAddress, profileVisitFrom: postSignature});
-        navigation.navigate('Profile', {
+        const success = debouncedNavigate(navigation, 'Profile', {
           walletAddress,
           profileVisitFrom: postSignature // Track where the visit came from
         });
-        console.log('🔍 FeedHomeScreen.handleUserPress: Navigation call completed');
+        console.log('🔍 FeedHomeScreen.handleUserPress: Navigation call completed, success:', success);
       } else {
         console.error('🚨 FeedHomeScreen.handleUserPress: No valid walletAddress provided:', {userId, walletAddress});
       }
@@ -565,10 +570,10 @@ export default function FeedHomeScreen({navigation}: Props) {
         
         try {
           const startTime = Date.now();
-          console.log('🔍 FeedHomeScreen: About to call navigation.navigate...');
-          navigation.navigate('Profile', params);
+          console.log('🔍 FeedHomeScreen: About to call debouncedNavigate...');
+          const success = debouncedNavigate(navigation, 'Profile', params);
           const endTime = Date.now();
-          console.log(`🔍 FeedHomeScreen: Profile navigation call completed successfully in ${endTime - startTime}ms`);
+          console.log(`🔍 FeedHomeScreen: Profile navigation call completed in ${endTime - startTime}ms, success: ${success}`);
         } catch (error) {
           console.error('🚨 FeedHomeScreen: Profile navigation failed:', error);
           console.error('🚨 FeedHomeScreen: Error stack:', error.stack);
@@ -840,8 +845,8 @@ export default function FeedHomeScreen({navigation}: Props) {
         <FlatList
           ref={flatListRef}
           data={[
-            ...(currentFeedType === 'for-you' && !adLoading ? [{ type: 'ad', data: billboardAd }] : []),
-            ...displayPosts.map(item => ({ type: 'post', data: item }))
+            ...(currentFeedType === 'for-you' && !adLoading && billboardAd ? [{ type: 'ad', data: billboardAd }] : []),
+            ...(Array.isArray(displayPosts) ? displayPosts.map(item => ({ type: 'post', data: item })) : [])
           ]}
           keyExtractor={(item, index) => {
             if (item.type === 'ad') {
@@ -986,9 +991,16 @@ export default function FeedHomeScreen({navigation}: Props) {
             
             return null;
           })()}
-          initialNumToRender={10}
-          maxToRenderPerBatch={5}
-          windowSize={10}
+          initialNumToRender={5}
+          maxToRenderPerBatch={3}
+          windowSize={5}
+          removeClippedSubviews={true}
+          updateCellsBatchingPeriod={100}
+          getItemLayout={(data, index) => ({
+            length: 400, // Estimated item height
+            offset: 400 * index,
+            index,
+          })}
         />
       </View>
 

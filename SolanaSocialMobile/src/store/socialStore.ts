@@ -10,25 +10,65 @@ import {Post as ApiPost} from '../services/api/types';
 import {socialAPI} from '../services/api/social';
 import {useWalletStore} from './wallet';
 
-// Helper function to transform processed_posts API response to social posts
+// Helper function to transform API response to social posts (handles both processed_posts and original formats)
 const transformApiPost = (apiPost: any): Post => {
-  // Log the transformation for debugging (processed_posts structure) - only log first few to reduce noise
+  // Safety check for undefined or null apiPost
+  if (!apiPost) {
+    console.error('🚨 SocialStore.transformApiPost: Received null/undefined post');
+    return {
+      id: 'error-' + Date.now(),
+      userWallet: '',
+      transactionHash: '',
+      message: 'Error loading post',
+      mediaUrls: [],
+      voteScore: 0,
+      upvoteCount: 0,
+      downvoteCount: 0,
+      replyCount: 0,
+      tipCount: 0,
+      totalTipAmount: 0,
+      isPinned: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      user: {
+        walletAddress: '',
+        name: 'Unknown',
+        isVerified: false,
+        onChainReputation: 0,
+      },
+      userVote: null,
+      userTipped: false,
+      userBookmarked: false,
+    } as Post;
+  }
+  
+  // Detect format: watchlist API uses original format (message, walletAddress, transactionHash)
+  // while other feeds use processed_posts format (postMessage, postUser, postSignature)
+  const isOriginalFormat = apiPost.message !== undefined && apiPost.walletAddress !== undefined;
+  const isProcessedFormat = apiPost.postMessage !== undefined || apiPost.postUser !== undefined;
+  
+  // Log the transformation for debugging - only log first few to reduce noise
   if (Math.random() < 0.1) { // Log 10% of posts randomly
-    console.log('🔍 SocialStore.transformApiPost: Input structure (processed_posts):', {
+    console.log('🔍 SocialStore.transformApiPost: Input structure:', {
       id: apiPost.id,
-      postSignature: apiPost.postSignature?.substring(0, 20) + '...',
-      postUser: apiPost.postUser?.substring(0, 20) + '...',
-      postMessage: apiPost.postMessage?.substring(0, 50) + '...',
-      displayName: apiPost.displayName, // Now available from backend
+      format: isOriginalFormat ? 'original' : (isProcessedFormat ? 'processed_posts' : 'unknown'),
+      // Original format fields
+      message: isOriginalFormat ? apiPost.message?.substring(0, 50) + '...' : 'N/A',
+      walletAddress: isOriginalFormat ? apiPost.walletAddress?.substring(0, 20) + '...' : 'N/A',
+      transactionHash: isOriginalFormat ? apiPost.transactionHash?.substring(0, 20) + '...' : 'N/A',
+      // Processed format fields  
+      postMessage: isProcessedFormat ? apiPost.postMessage?.substring(0, 50) + '...' : 'N/A',
+      postUser: isProcessedFormat ? apiPost.postUser?.substring(0, 20) + '...' : 'N/A',
+      postSignature: isProcessedFormat ? apiPost.postSignature?.substring(0, 20) + '...' : 'N/A',
+      displayName: apiPost.displayName,
       userIsBrand: apiPost.userIsBrand,
       brandName: apiPost.brandName,
       userSnsDomain: apiPost.userSnsDomain,
-      // NEW BACKEND FIELDS CHECK
       hasQuotedPostData: !!apiPost.quotedPostData,
       hasThreadData: !!apiPost.threadData,
       isThreadRoot: apiPost.isThreadRoot,
       threadPostCount: apiPost.threadPostCount,
-      allFields: Object.keys(apiPost).slice(0, 10) // Show first 10 fields
+      allFields: Object.keys(apiPost).slice(0, 15) // Show first 15 fields
     });
   }
   
@@ -55,7 +95,10 @@ const transformApiPost = (apiPost: any): Post => {
     if (shouldUseBrandInfo) {
       return apiPost.brandName;
     }
-    return apiPost.userSnsDomain || `${apiPost.postUser?.slice(0, 5)}...${apiPost.postUser?.slice(-5)}` || 'Anonymous';
+    
+    // Handle different wallet field names based on format
+    const walletAddress = getUserWallet();
+    return apiPost.userSnsDomain || `${walletAddress?.slice(0, 5)}...${walletAddress?.slice(-5)}` || 'Anonymous';
   };
 
   // Get profile picture with brand prioritization
@@ -63,7 +106,8 @@ const transformApiPost = (apiPost: any): Post => {
     if (shouldUseBrandInfo && apiPost.brandLogoUrl) {
       return apiPost.brandLogoUrl;
     }
-    return apiPost.userProfileImageUri;
+    // Handle different profile image field names based on format
+    return apiPost.userProfileImageUri || apiPost.profilePicture || apiPost.avatar_url;
   };
 
   // Get verification status with brand prioritization
@@ -74,12 +118,43 @@ const transformApiPost = (apiPost: any): Post => {
     return apiPost.userIsVerifiedNft || apiPost.userIsVerifiedSns || false;
   };
 
+  // Handle both formats in field mapping
+  const getMessage = () => {
+    if (isOriginalFormat) return apiPost.message || '';
+    return apiPost.postMessage || '';
+  };
+  
+  const getUserWallet = () => {
+    if (isOriginalFormat) return apiPost.walletAddress || '';
+    return apiPost.postUser || '';
+  };
+  
+  const getTransactionHash = () => {
+    if (isOriginalFormat) return apiPost.transactionHash || '';
+    return apiPost.postSignature || '';
+  };
+  
+  const getMediaUrls = () => {
+    if (isOriginalFormat) return apiPost.mediaUrls || [];
+    return apiPost.postImages || [];
+  };
+  
+  const getCreatedAt = () => {
+    if (isOriginalFormat) return apiPost.createdAt || new Date().toISOString();
+    return apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString();
+  };
+  
+  const getUpdatedAt = () => {
+    if (isOriginalFormat) return apiPost.updatedAt || apiPost.createdAt || new Date().toISOString();
+    return apiPost.updatedAt || apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString();
+  };
+
   return {
     id: apiPost.id?.toString() || '0',
-    userWallet: apiPost.postUser || '',
-    transactionHash: apiPost.postSignature || '',
-    message: apiPost.postMessage || '',
-    mediaUrls: apiPost.postImages || [],
+    userWallet: getUserWallet(),
+    transactionHash: getTransactionHash(),
+    message: getMessage(),
+    mediaUrls: getMediaUrls(),
     voteScore: (apiPost.userUpvotesReceived || 0) - (apiPost.userDownvotesReceived || 0),
     upvoteCount: apiPost.userUpvotesReceived || 0,
     downvoteCount: apiPost.userDownvotesReceived || 0,
@@ -87,12 +162,12 @@ const transformApiPost = (apiPost: any): Post => {
     tipCount: apiPost.userTipsReceivedCount || 0,
     totalTipAmount: 0, // Will be calculated from tip data if available
     isPinned: false, // Will be updated when pin data is available
-    createdAt: apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString(),
-    updatedAt: apiPost.updatedAt || apiPost.processedAt || apiPost.postProcessedAt || new Date().toISOString(),
+    createdAt: getCreatedAt(),
+    updatedAt: getUpdatedAt(),
     
     // User object with brand prioritization
     user: {
-      walletAddress: apiPost.postUser || '',
+      walletAddress: getUserWallet(),
       name: getDisplayName(),
       profilePicture: getProfilePicture(),
       isVerified: getIsVerified(),
@@ -111,7 +186,7 @@ const transformApiPost = (apiPost: any): Post => {
       reputation_score: apiPost.userReputation || 0,
       follower_count: 0, // Not available in current processed_posts
       following_count: 0, // Not available in current processed_posts
-      wallet_address: apiPost.postUser,
+      wallet_address: getUserWallet(),
       
       // Brand information (when user is a brand)
       brand_name: shouldUseBrandInfo ? apiPost.brandName : null,
@@ -167,6 +242,7 @@ interface SocialState extends FeedState {
   
   // Reputation polling state
   reputationPollingInterval: NodeJS.Timeout | null;
+  reputationPollingRefCount: number; // Track how many components want polling
   
   
   // Actions
@@ -226,6 +302,7 @@ export const useSocialStore = create<SocialState>((set, get) => ({
   
   // Reputation polling state
   reputationPollingInterval: null as NodeJS.Timeout | null,
+  reputationPollingRefCount: 0,
 
   // Load initial feed
   loadFeed: async (refresh = false, feedType?: 'for-you' | 'recent' | 'watchlist' | 'trending' | 'controversial' | 'receipts' | 'discovery', timeRange?: 'hour' | 'day' | 'week') => {
@@ -295,9 +372,17 @@ export const useSocialStore = create<SocialState>((set, get) => ({
         refresh
       });
       
-      const newPosts = refresh
+      let newPosts = refresh
         ? transformedPosts
         : [...get().posts, ...transformedPosts];
+      
+      // MEMORY MANAGEMENT: Limit total posts to prevent memory issues
+      const MAX_POSTS = 100;
+      if (newPosts.length > MAX_POSTS) {
+        console.log(`⚠️ SocialStore: Trimming posts from ${newPosts.length} to ${MAX_POSTS} to save memory`);
+        // Keep the most recent posts
+        newPosts = newPosts.slice(0, MAX_POSTS);
+      }
 
       console.log('🔍 SocialStore: Setting new posts in state:', {
         newPostsLength: newPosts.length,
@@ -813,33 +898,48 @@ export const useSocialStore = create<SocialState>((set, get) => ({
   },
 
   startReputationPolling: () => {
-    const { reputationPollingInterval } = get();
+    const { reputationPollingInterval, reputationPollingRefCount } = get();
     
-    // Clear existing interval if any
-    if (reputationPollingInterval) {
-      clearInterval(reputationPollingInterval);
-    }
+    // Increment reference count
+    const newRefCount = reputationPollingRefCount + 1;
+    set({ reputationPollingRefCount: newRefCount });
     
-    console.log('🔄 SocialStore.startReputationPolling: Starting reputation polling every 10 seconds');
+    console.log(`🔄 SocialStore.startReputationPolling: RefCount=${newRefCount}`);
     
-    // Start new polling interval (10 seconds)
-    const interval = setInterval(() => {
+    // Only start interval if this is the first request
+    if (!reputationPollingInterval) {
+      console.log('🔄 SocialStore.startReputationPolling: Starting NEW reputation polling every 10 seconds');
+      
+      // Start new polling interval (10 seconds)
+      const interval = setInterval(() => {
+        get().pollReputationScores();
+      }, 10000);
+      
+      set({ reputationPollingInterval: interval });
+      
+      // Do initial poll
       get().pollReputationScores();
-    }, 10000);
-    
-    set({ reputationPollingInterval: interval });
-    
-    // Do initial poll
-    get().pollReputationScores();
+    } else {
+      console.log('🔄 SocialStore.startReputationPolling: Polling already active, skipping');
+    }
   },
 
   stopReputationPolling: () => {
-    const { reputationPollingInterval } = get();
+    const { reputationPollingInterval, reputationPollingRefCount } = get();
     
-    if (reputationPollingInterval) {
-      console.log('🔄 SocialStore.stopReputationPolling: Stopping reputation polling');
+    // Decrement reference count
+    const newRefCount = Math.max(0, reputationPollingRefCount - 1);
+    set({ reputationPollingRefCount: newRefCount });
+    
+    console.log(`🔄 SocialStore.stopReputationPolling: RefCount=${newRefCount}`);
+    
+    // Only stop interval if no more references
+    if (newRefCount === 0 && reputationPollingInterval) {
+      console.log('🔄 SocialStore.stopReputationPolling: No more references, STOPPING reputation polling');
       clearInterval(reputationPollingInterval);
       set({ reputationPollingInterval: null });
+    } else if (newRefCount > 0) {
+      console.log(`🔄 SocialStore.stopReputationPolling: Still ${newRefCount} references, keeping polling active`);
     }
   },
 
