@@ -18,7 +18,8 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react-native';
-import {ConsistentHeader} from '../../components/navigation/ConsistentHeader';
+import {AppNavBar} from '../../components/navigation/AppNavBar';
+import {SidebarMenu} from '../../components/navigation/SidebarMenu';
 import {useThemeStore} from '../../store/themeStore';
 
 interface TokensHomeScreenProps {
@@ -111,6 +112,22 @@ const tokensCategories: TokensCategory[] = [
 
 function TokensHomeScreen({navigation}: TokensHomeScreenProps) {
   const {colors} = useThemeStore();
+  const [sidebarVisible, setSidebarVisible] = React.useState(false);
+
+  const handleSidebarNavigate = useCallback((screen: string, params?: any) => {
+    setSidebarVisible(false);
+    // Navigate based on the screen
+    if (screen === 'Profile') {
+      // Navigate to Profile screen (with params if provided, otherwise user's own profile)
+      navigation.navigate('Profile', params);
+    } else if (['Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
+                'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
+                'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'].includes(screen)) {
+      navigation.navigate(screen, params);
+    } else {
+      navigation.navigate('FeedHome');
+    }
+  }, [navigation]);
 
   const handleCategoryPress = useCallback((category: TokensCategory) => {
     if (category.comingSoon) {
@@ -216,7 +233,10 @@ function TokensHomeScreen({navigation}: TokensHomeScreenProps) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ConsistentHeader title="Tokens" onBack={() => navigation.navigate('FeedHome')} />
+      <AppNavBar 
+        title="Tokens" 
+        onProfilePress={() => setSidebarVisible(true)} 
+      />
 
       <ScrollView style={styles.categoriesList} showsVerticalScrollIndicator={false}>
         {tokensCategories.map((category, index) => (
@@ -266,6 +286,12 @@ function TokensHomeScreen({navigation}: TokensHomeScreenProps) {
         ))}
       </ScrollView>
 
+      {/* Sidebar */}
+      <SidebarMenu
+        visible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+        onNavigate={handleSidebarNavigate}
+      />
     </SafeAreaView>
   );
 }

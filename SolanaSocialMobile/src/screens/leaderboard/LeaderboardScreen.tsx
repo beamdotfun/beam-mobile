@@ -105,9 +105,9 @@ export default function LeaderboardScreen({navigation}: LeaderboardScreenProps) 
         // Always pass as walletAddress since the leaderboard API provides wallet addresses
         const params = { walletAddress: userIdentifier };
           
-        console.log('🔍 LeaderboardScreen: Navigating to Feed -> Profile with params:', params);
+        console.log('🔍 LeaderboardScreen: Navigating to Feed -> UserProfile with params:', params);
         parent.navigate('Feed', {
-          screen: 'Profile',
+          screen: 'UserProfile',  // Changed from 'Profile' to 'UserProfile' to view other users
           params
         });
         console.log('🔍 LeaderboardScreen: Navigation call completed');
@@ -125,7 +125,7 @@ export default function LeaderboardScreen({navigation}: LeaderboardScreenProps) 
     const feedTabScreens = [
       'Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
       'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
-      'Posts', 'Receipts', 'Points', 'Business', 'HelpCenter'
+      'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'
     ];
     
     if (feedTabScreens.includes(screen)) {

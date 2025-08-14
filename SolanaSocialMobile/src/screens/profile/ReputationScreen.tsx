@@ -13,6 +13,8 @@ import {
   ChevronDown,
   Zap,
   Plus,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react-native';
 import {Avatar} from '../../components/ui/avatar';
 import {SegmentedControl} from '../../components/ui/SegmentedControl';
@@ -23,6 +25,8 @@ import {useEnhancedRefresh} from '../../hooks/useEnhancedRefresh';
 import {useThemeStore} from '../../store/themeStore';
 import {useAuthStore} from '../../store/auth';
 import {useProfileStore} from '../../store/profileStore';
+import {useVoting} from '../../hooks/useBlockchainTransactions';
+import {useWalletConnection} from '../../hooks/useWalletConnection';
 import {reputationAPI} from '../../services/api/reputation';
 import {socialAPI} from '../../services/api/social';
 import {ReputationData} from '../../services/api/types';
@@ -59,6 +63,8 @@ export default function ReputationScreen({navigation, route}: ReputationScreenPr
   const {colors} = useThemeStore();
   const {user} = useAuthStore();
   const {currentProfile, loadProfile} = useProfileStore();
+  const {upvote, downvote, loading: votingLoading} = useVoting();
+  const walletConnection = useWalletConnection();
   
   const walletAddress = route.params.walletAddress;
   const [selectedTab, setSelectedTab] = useState(0);
@@ -75,6 +81,10 @@ export default function ReputationScreen({navigation, route}: ReputationScreenPr
   const [votesLoading, setVotesLoading] = useState(true);
   const [votesError, setVotesError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Voting state
+  const [selectedVote, setSelectedVote] = useState<'upvote' | 'downvote' | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   
   const tabs = ['Upvotes', 'Downvotes'];
   
@@ -286,6 +296,121 @@ export default function ReputationScreen({navigation, route}: ReputationScreenPr
     setSortBy(option);
     setShowSortDropdown(false);
   };
+
+  // Auto-dismiss status messages after 10 seconds
+  useEffect(() => {
+    if (statusMessage) {
+      const timer = setTimeout(() => {
+        setStatusMessage(null);
+      }, 10000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [statusMessage]);
+
+  // Get wallet connection state
+  const { 
+    publicKey, 
+    walletWarningType, 
+    showWalletWarning,
+    isPrimaryWalletConnected 
+  } = walletConnection;
+  const canVote = !showWalletWarning;
+
+  // Don't show voting buttons for own profile
+  const isOwnProfile = user?.walletAddress === walletAddress;
+
+  const handleUpvote = useCallback(async () => {
+    if (votingLoading || !canVote || isOwnProfile) return;
+    
+    setSelectedVote('upvote');
+    setStatusMessage(null);
+    
+    try {
+      console.log('🔄 Starting upvote transaction from reputation screen...');
+      const result = await upvote(walletAddress);
+      
+      setStatusMessage({
+        type: 'success',
+        message: `Upvote recorded successfully! Transaction: ${result.signature.slice(0, 8)}...${result.signature.slice(-8)}`
+      });
+      
+      console.log('🎉 Profile upvote successful:', result.signature);
+      
+      // Refresh data after successful vote
+      handleRefresh();
+      
+    } catch (error: any) {
+      console.error('❌ Profile upvote failed:', error);
+      setSelectedVote(null);
+      
+      let errorMessage = 'Failed to record upvote. Please try again.';
+      let messageType: 'error' | 'info' = 'error';
+      
+      if (error.message?.includes('invalid count') || error.message?.includes('already voted')) {
+        errorMessage = 'You have already voted for this user. You can only vote once per user.';
+        messageType = 'info';
+      } else if (error.message?.includes('at least one post')) {
+        errorMessage = 'You must create at least one post before you can vote';
+      } else if (error.message?.includes('rejected') || error.message?.includes('cancelled')) {
+        errorMessage = 'Voting process not completed';
+        messageType = 'info';
+      } else if (error.message?.includes('insufficient')) {
+        errorMessage = 'Insufficient SOL balance to complete voting';
+      }
+      
+      setStatusMessage({
+        type: messageType,
+        message: errorMessage
+      });
+    }
+  }, [upvote, walletAddress, votingLoading, canVote, isOwnProfile, handleRefresh]);
+
+  const handleDownvote = useCallback(async () => {
+    if (votingLoading || !canVote || isOwnProfile) return;
+    
+    setSelectedVote('downvote');
+    setStatusMessage(null);
+    
+    try {
+      console.log('🔄 Starting downvote transaction from reputation screen...');
+      const result = await downvote(walletAddress);
+      
+      setStatusMessage({
+        type: 'success',
+        message: `Downvote recorded successfully! Transaction: ${result.signature.slice(0, 8)}...${result.signature.slice(-8)}`
+      });
+      
+      console.log('🎉 Profile downvote successful:', result.signature);
+      
+      // Refresh data after successful vote
+      handleRefresh();
+      
+    } catch (error: any) {
+      console.error('❌ Profile downvote failed:', error);
+      setSelectedVote(null);
+      
+      let errorMessage = 'Failed to record downvote. Please try again.';
+      let messageType: 'error' | 'info' = 'error';
+      
+      if (error.message?.includes('invalid count') || error.message?.includes('already voted')) {
+        errorMessage = 'You have already voted for this user. You can only vote once per user.';
+        messageType = 'info';
+      } else if (error.message?.includes('at least one post')) {
+        errorMessage = 'You must create at least one post before you can vote';
+      } else if (error.message?.includes('rejected') || error.message?.includes('cancelled')) {
+        errorMessage = 'Voting process not completed';
+        messageType = 'info';
+      } else if (error.message?.includes('insufficient')) {
+        errorMessage = 'Insufficient SOL balance to complete voting';
+      }
+      
+      setStatusMessage({
+        type: messageType,
+        message: errorMessage
+      });
+    }
+  }, [downvote, walletAddress, votingLoading, canVote, isOwnProfile, handleRefresh]);
 
   const renderVoteUser = ({item}: {item: VoteUser}) => (
     <Pressable
@@ -691,6 +816,69 @@ export default function ReputationScreen({navigation, route}: ReputationScreenPr
       fontFamily: 'Inter-SemiBold',
       fontWeight: '600',
     },
+    // Voting buttons styles
+    votingButtonsContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    voteButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+    },
+    upvoteButton: {
+      backgroundColor: colors.success + '15',
+      borderColor: colors.success + '30',
+    },
+    downvoteButton: {
+      backgroundColor: colors.destructive + '15', 
+      borderColor: colors.destructive + '30',
+    },
+    voteButtonDisabled: {
+      opacity: 0.5,
+    },
+    voteButtonActive: {
+      backgroundColor: colors.primary + '20',
+      borderColor: colors.primary,
+    },
+    statusMessage: {
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 12,
+      marginHorizontal: 16,
+      marginBottom: 8,
+      borderWidth: 1,
+    },
+    statusMessageSuccess: {
+      borderColor: colors.success,
+      backgroundColor: colors.success + '10',
+    },
+    statusMessageError: {
+      borderColor: colors.destructive,
+      backgroundColor: colors.destructive + '10',
+    },
+    statusMessageInfo: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '10',
+    },
+    statusMessageText: {
+      fontSize: 12,
+      fontFamily: 'Inter-Regular',
+      textAlign: 'center',
+    },
+    statusMessageTextSuccess: {
+      color: colors.success,
+    },
+    statusMessageTextError: {
+      color: colors.destructive,
+    },
+    statusMessageTextInfo: {
+      color: colors.primary,
+    },
   });
 
   // Show loading state
@@ -768,6 +956,25 @@ export default function ReputationScreen({navigation, route}: ReputationScreenPr
         onNewPostPress={() => navigation.navigate('CreatePost')}
       />
 
+      {/* Status Message */}
+      {statusMessage && (
+        <View style={[
+          styles.statusMessage,
+          statusMessage.type === 'success' && styles.statusMessageSuccess,
+          statusMessage.type === 'error' && styles.statusMessageError,
+          statusMessage.type === 'info' && styles.statusMessageInfo,
+        ]}>
+          <Text style={[
+            styles.statusMessageText,
+            statusMessage.type === 'success' && styles.statusMessageTextSuccess,
+            statusMessage.type === 'error' && styles.statusMessageTextError,
+            statusMessage.type === 'info' && styles.statusMessageTextInfo,
+          ]}>
+            {statusMessage.message}
+          </Text>
+        </View>
+      )}
+
       {/* Profile Section */}
       <View style={styles.profileSection}>
         <View style={styles.profileHeader}>
@@ -782,6 +989,43 @@ export default function ReputationScreen({navigation, route}: ReputationScreenPr
             <Text style={styles.profileName}>{getUsernameDisplay()}</Text>
             <Text style={styles.profileSubtitle}>Reputation Overview</Text>
           </View>
+          
+          {/* Voting Buttons - Only show for other users' profiles */}
+          {!isOwnProfile && (
+            <View style={styles.votingButtonsContainer}>
+              <Pressable
+                style={[
+                  styles.voteButton,
+                  styles.upvoteButton,
+                  (votingLoading || !canVote) && styles.voteButtonDisabled,
+                  selectedVote === 'upvote' && styles.voteButtonActive,
+                ]}
+                onPress={handleUpvote}
+                disabled={votingLoading || !canVote}
+              >
+                <ThumbsUp 
+                  size={18} 
+                  color={selectedVote === 'upvote' ? colors.primary : colors.success} 
+                />
+              </Pressable>
+              
+              <Pressable
+                style={[
+                  styles.voteButton,
+                  styles.downvoteButton,
+                  (votingLoading || !canVote) && styles.voteButtonDisabled,
+                  selectedVote === 'downvote' && styles.voteButtonActive,
+                ]}
+                onPress={handleDownvote}
+                disabled={votingLoading || !canVote}
+              >
+                <ThumbsDown 
+                  size={18} 
+                  color={selectedVote === 'downvote' ? colors.primary : colors.destructive} 
+                />
+              </Pressable>
+            </View>
+          )}
         </View>
 
         {/* Reputation Stats */}

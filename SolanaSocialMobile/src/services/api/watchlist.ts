@@ -1,4 +1,5 @@
 import api from './client';
+import {getUserProfilePicture} from '../../utils/profileUtils';
 
 /**
  * Watchlist service for following/unfollowing users and getting watchlist data
@@ -19,21 +20,26 @@ export class WatchlistService {
    * Format user data consistently
    */
   private formatUserData(user: any) {
-    // Handle profileImage that might come as array or string
-    const getProfileImageUrl = (profileImageData: any): string | undefined => {
-      if (!profileImageData) return undefined;
-      if (typeof profileImageData === 'string') return profileImageData;
-      if (Array.isArray(profileImageData) && profileImageData.length > 0) {
-        return typeof profileImageData[0] === 'string' ? profileImageData[0] : profileImageData[0]?.url;
-      }
-      return undefined;
-    };
-
+    const profileImage = getUserProfilePicture(user);
+    
+    // Debug logging for profile pictures
+    console.log('🖼️ WatchlistService: Profile image debug for user:', {
+      walletAddress: user.walletAddress?.slice(0, 8),
+      profilePicture: user.profilePicture,
+      profile_image_url: user.profile_image_url,
+      avatar_url: user.avatar_url,
+      userProfileImageUri: user.userProfileImageUri,
+      profileImageUrl: user.profileImageUrl,
+      brandLogoUrl: user.brandLogoUrl,
+      brand_logo_url: user.brand_logo_url,
+      resolved: profileImage
+    });
+    
     return {
       walletAddress: user.walletAddress,
       username: user.username || `@${user.walletAddress.slice(0, 8)}...`,
       displayName: user.displayName || user.username || `User ${user.walletAddress.slice(0, 8)}...`,
-      profileImage: getProfileImageUrl(user.profileImageUrl || user.profileImage || user.profile_image_url),
+      profileImage: profileImage, // Use the same utility function as other feeds
       isVerified: user.isVerified || user.isProfileVerified || user.isUsernameVerified,
       isBrand: user.isBrand || false,
       reputation: user.reputation || 0,
@@ -100,6 +106,23 @@ export class WatchlistService {
     console.log(`🔍 WatchlistService: Response status: ${response.status}`);
     console.log(`🔍 WatchlistService: Response ok: ${response.ok}`);
     console.log('🔍 WatchlistService: Raw API response:', JSON.stringify(response.data, null, 2));
+    
+    // Debug specific fields from API response
+    if (response.data?.success && response.data?.data?.following) {
+      const following = response.data.data.following;
+      console.log(`🔍 WatchlistService: Found ${following.length} users in following array`);
+      following.forEach((user: any, index: number) => {
+        console.log(`🔍 User ${index + 1}:`, {
+          walletAddress: user.walletAddress?.slice(0, 8) + '...',
+          username: user.username,
+          displayName: user.displayName,
+          profileImageUrl: user.profileImageUrl,
+          isVerified: user.isVerified,
+          isBrand: user.isBrand,
+          reputation: user.reputation
+        });
+      });
+    }
 
     if (!response.ok) {
       throw new Error(`Failed to get watchlist members: ${response.status}`);

@@ -41,6 +41,7 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
   const socialStoreData = useSocialStore();
   const trendingPosts = socialStoreData?.posts || [];
   const loadFeed = socialStoreData?.loadFeed;
+  const currentFeedType = socialStoreData?.currentFeedType;
   
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,6 +51,7 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isTabSwitching, setIsTabSwitching] = useState(false);
   
   // Trending posts tabs state
   const [selectedTrendingTab, setSelectedTrendingTab] = useState(0);
@@ -68,9 +70,25 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
     loadTrendingContent();
   }, []);
 
-  const loadTrendingContent = async (tabIndex?: number) => {
+  // Monitor feed type changes to ensure posts match the current tab
+  useEffect(() => {
+    const expectedFeedType = selectedTrendingTab === 0 ? 'trending' : selectedTrendingTab === 1 ? 'controversial' : 'discovery';
+    
+    // If feed type doesn't match selected tab and we're not already loading, reload
+    if (currentFeedType !== expectedFeedType && !loading && !isTabSwitching && selectedTrendingTab !== 2) {
+      console.log('Feed type mismatch detected, reloading:', { currentFeedType, expectedFeedType, selectedTrendingTab });
+      loadTrendingContent(selectedTrendingTab, false);
+    }
+  }, [currentFeedType, selectedTrendingTab]);
+
+  const loadTrendingContent = async (tabIndex?: number, isSwitch: boolean = false) => {
     try {
-      setLoading(true);
+      // Set appropriate loading state
+      if (isSwitch) {
+        setIsTabSwitching(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       
       // Load trending topics (only for the first tab)
@@ -92,7 +110,13 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
           } else if (tabConfig?.sortBy === 'controversial') {
             // For "Controversial" tab, use controversial feed endpoint
             console.log('Loading controversial feed...');
-            await loadFeed(true, 'controversial', tabConfig.timeRange as 'hour' | 'day' | 'week');
+            try {
+              await loadFeed(true, 'controversial', tabConfig.timeRange as 'hour' | 'day' | 'week');
+            } catch (error) {
+              console.log('Controversial feed failed, trying with default time range...');
+              // Retry with default 'day' time range if initial request fails
+              await loadFeed(true, 'controversial', 'day');
+            }
           } else if (tabConfig?.sortBy === 'trending') {
             // For "Trending" tab, use trending with time range
             console.log('Loading trending feed...');
@@ -113,6 +137,7 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
       setError('Failed to load trending content');
     } finally {
       setLoading(false);
+      setIsTabSwitching(false);
     }
   };
 
@@ -292,9 +317,10 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadTrendingContent();
+    // Reload content for the currently selected tab
+    await loadTrendingContent(selectedTrendingTab);
     setRefreshing(false);
-  }, []);
+  }, [selectedTrendingTab]);
 
   // Enhanced refresh with haptic feedback
   const { enhancedOnRefresh, tintColor: refreshTintColor, colors: refreshColors, handleRefreshStateChange } = useEnhancedRefresh({
@@ -314,10 +340,8 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
     // Update UI immediately for instant visual feedback
     setSelectedTrendingTab(tabIndex);
     
-    // Load content asynchronously to not block UI
-    setTimeout(() => {
-      loadTrendingContent(tabIndex);
-    }, 0);
+    // Load content with tab switch flag
+    loadTrendingContent(tabIndex, true);
   };
 
   const clearSearch = () => {
@@ -443,7 +467,7 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
     const feedTabScreens = [
       'Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
       'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
-      'Posts', 'Receipts', 'Watchlist', 'Points', 'Business', 'HelpCenter'
+      'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'
     ];
     
     if (feedTabScreens.includes(screen)) {
@@ -1068,32 +1092,31 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
               </View>
             )}
 
-            {/* Trending Posts with Tabs */}
-            {(trendingPosts?.length || 0) > 0 && (
-              <View>
-                <View style={styles.trendingHeader}>
-                  <TrendingUp size={18} color={colors.foreground} style={styles.sectionIcon} />
-                  <View style={styles.cleanTabs}>
-                    {trendingTabs.map((tab, index) => (
-                      <Pressable
-                        key={tab}
-                        style={[
-                          styles.cleanTab,
-                          index === selectedTrendingTab && styles.cleanTabActive
-                        ]}
-                        onPress={() => handleTrendingTabChange(index)}
-                      >
-                        <Text style={[
-                          styles.cleanTabText,
-                          index === selectedTrendingTab && styles.cleanTabTextActive
-                        ]}>
-                          {tab}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
+            {/* Discovery Bar - Always show tabs */}
+            <View>
+              <View style={styles.trendingHeader}>
+                <TrendingUp size={18} color={colors.foreground} style={styles.sectionIcon} />
+                <View style={styles.cleanTabs}>
+                  {trendingTabs.map((tab, index) => (
+                    <Pressable
+                      key={tab}
+                      style={[
+                        styles.cleanTab,
+                        index === selectedTrendingTab && styles.cleanTabActive
+                      ]}
+                      onPress={() => handleTrendingTabChange(index)}
+                    >
+                      <Text style={[
+                        styles.cleanTabText,
+                        index === selectedTrendingTab && styles.cleanTabTextActive
+                      ]}>
+                        {tab}
+                      </Text>
+                    </Pressable>
+                  ))}
                 </View>
-                <View style={styles.postsContainer}>
+              </View>
+              <View style={styles.postsContainer}>
                   {selectedTrendingTab === 2 ? (
                     // Tokens tab - coming soon message
                     <View style={styles.comingSoonContainer}>
@@ -1104,42 +1127,65 @@ export default function SearchScreen({navigation}: SearchScreenProps) {
                     </View>
                   ) : (
                     // Trending and Controversial tabs - show posts
-                    Array.isArray(trendingPosts) && trendingPosts.length > 0 ? (
-                      trendingPosts.slice(0, 10).map((post, index) => {
-                        // Skip null/undefined posts
-                        if (!post || !post.id) return null;
-                        
-                        return (
-                          <PostCard
-                            key={`post-${post.id}-${index}`}
-                            post={post}
-                            onPress={() => handlePostPress(post)}
-                            onUserPress={handleUserPress}
-                            onQuotePress={handleQuotePost}
-                            onThreadPress={handleThreadPress}
-                            onQuotedPostPress={handleQuotedPostPress}
-                            feedContext={selectedTrendingTab === 0 ? 'trending' : selectedTrendingTab === 1 ? 'controversial' : 'default'}
-                          />
-                        );
-                      })
-                    ) : (
+                    isTabSwitching ? (
+                      // Show loading state while switching tabs
                       <View style={styles.emptyState}>
-                        <Text style={styles.emptyStateText}>
-                          No {selectedTrendingTab === 0 ? 'trending' : 'controversial'} posts available
-                        </Text>
+                        <Text style={styles.loadingText}>Loading {selectedTrendingTab === 0 ? 'trending' : 'controversial'} posts...</Text>
                       </View>
+                    ) : (
+                      // Check if current posts match the selected tab
+                      (() => {
+                        const expectedFeedType = selectedTrendingTab === 0 ? 'trending' : 'controversial';
+                        const postsMatchTab = currentFeedType === expectedFeedType;
+                        const hasValidPosts = Array.isArray(trendingPosts) && trendingPosts.length > 0 && postsMatchTab;
+                        
+                        if (hasValidPosts) {
+                          return trendingPosts.slice(0, 10).map((post, index) => {
+                            // Skip null/undefined posts
+                            if (!post || !post.id) return null;
+                            
+                            return (
+                              <PostCard
+                                key={`post-${post.id}-${index}`}
+                                post={post}
+                                onPress={() => handlePostPress(post)}
+                                onUserPress={handleUserPress}
+                                onQuotePress={handleQuotePost}
+                                onThreadPress={handleThreadPress}
+                                onQuotedPostPress={handleQuotedPostPress}
+                                feedContext={selectedTrendingTab === 0 ? 'trending' : selectedTrendingTab === 1 ? 'controversial' : 'default'}
+                              />
+                            );
+                          });
+                        } else {
+                          return (
+                            <View style={styles.emptyState}>
+                              <Text style={styles.emptyStateText}>
+                                No {selectedTrendingTab === 0 ? 'trending' : 'controversial'} posts available
+                              </Text>
+                              <Text style={styles.emptyStateSubtext}>
+                                {selectedTrendingTab === 1 
+                                  ? 'Controversial posts are calculated based on mixed voting patterns. Check back later!'
+                                  : 'Pull down to refresh and check for new posts'}
+                              </Text>
+                            </View>
+                          );
+                        }
+                      })()
                     )
                   )}
                 </View>
               </View>
-            )}
 
-            {/* Empty state when no trending content */}
-            {(trendingTopics?.length || 0) === 0 && (trendingPosts?.length || 0) === 0 && !loading && (
+            {/* Empty state when no trending topics (only show on trending tab) */}
+            {(trendingTopics?.length || 0) === 0 && selectedTrendingTab === 0 && !loading && (
               <View style={styles.emptyState}>
                 <TrendingUp size={32} color={colors.mutedForeground} />
                 <Text style={styles.emptyStateText}>
-                  No trending content available right now.
+                  No trending topics available right now.
+                </Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Pull down to refresh or try the other discovery tabs.
                 </Text>
               </View>
             )}

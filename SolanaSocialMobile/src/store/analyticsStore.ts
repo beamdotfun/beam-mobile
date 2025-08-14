@@ -251,21 +251,32 @@ export const useAnalyticsStore = create<AnalyticsState>()(
             }));
           }, 200);
 
-          const exportData = await AnalyticsService.exportAnalytics(
-            wallet,
-            options,
-          );
+          try {
+            const exportData = await AnalyticsService.exportAnalytics(
+              wallet,
+              options,
+            );
+            
+            clearInterval(progressInterval);
+            set({exportProgress: 100});
 
-          clearInterval(progressInterval);
-          set({exportProgress: 100});
+            // Clean up progress after a delay
+            setTimeout(() => {
+              set({exportLoading: false, exportProgress: 0});
+            }, 1000);
 
-          // Clean up progress after a delay
-          setTimeout(() => {
-            set({exportLoading: false, exportProgress: 0});
-          }, 1000);
-
-          return exportData.url;
+            return exportData.url;
+          } catch (error) {
+            clearInterval(progressInterval); // CRITICAL: Clear interval on error too!
+            set({
+              exportLoading: false,
+              exportProgress: 0,
+              error: error instanceof Error ? error.message : 'Export failed',
+            });
+            throw error;
+          }
         } catch (error) {
+          // Outer catch for any errors before interval starts
           set({
             exportLoading: false,
             exportProgress: 0,

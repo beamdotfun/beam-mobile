@@ -78,12 +78,17 @@ export default function VoteSelectionScreen({ navigation, route }: VoteSelection
       
     } catch (error: any) {
       console.error('❌ Profile upvote failed:', error);
+      console.error('❌ Error details:', error.message || error);
       setSelectedVote(null);
       
       let errorMessage = 'Failed to record upvote. Please try again.';
       let messageType: 'error' | 'info' = 'error';
       
-      if (error.message?.includes('at least one post')) {
+      // Check for duplicate vote error (invalid count - 9)
+      if (error.message?.includes('invalid count') || error.message?.includes('already voted')) {
+        errorMessage = 'You have already voted for this user. You can only vote once per user.';
+        messageType = 'info';
+      } else if (error.message?.includes('at least one post')) {
         errorMessage = 'You must create at least one post before you can vote';
       } else if (error.message?.includes('rejected') || error.message?.includes('cancelled') || error.message?.includes('User rejected')) {
         errorMessage = 'Voting process not completed';
@@ -100,6 +105,9 @@ export default function VoteSelectionScreen({ navigation, route }: VoteSelection
         type: messageType,
         message: errorMessage
       });
+      
+      // Don't show success message on error
+      return;
     }
   }, [upvote, targetWallet, targetName, navigation, votingLoading, canVote]);
 
@@ -127,12 +135,17 @@ export default function VoteSelectionScreen({ navigation, route }: VoteSelection
       
     } catch (error: any) {
       console.error('❌ Profile downvote failed:', error);
+      console.error('❌ Error details:', error.message || error);
       setSelectedVote(null);
       
       let errorMessage = 'Failed to record downvote. Please try again.';
       let messageType: 'error' | 'info' = 'error';
       
-      if (error.message?.includes('at least one post')) {
+      // Check for duplicate vote error (invalid count - 9)
+      if (error.message?.includes('invalid count') || error.message?.includes('already voted')) {
+        errorMessage = 'You have already voted for this user. You can only vote once per user.';
+        messageType = 'info';
+      } else if (error.message?.includes('at least one post')) {
         errorMessage = 'You must create at least one post before you can vote';
       } else if (error.message?.includes('rejected') || error.message?.includes('cancelled') || error.message?.includes('User rejected')) {
         errorMessage = 'Voting process not completed';
@@ -149,6 +162,9 @@ export default function VoteSelectionScreen({ navigation, route }: VoteSelection
         type: messageType,
         message: errorMessage
       });
+      
+      // Don't show success message on error
+      return;
     }
   }, [downvote, targetWallet, targetName, navigation, votingLoading, canVote]);
 

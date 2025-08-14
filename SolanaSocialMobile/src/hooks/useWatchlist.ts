@@ -15,6 +15,39 @@ export function useWatchlist() {
     setError(null);
   }, []);
 
+  // Load watchlist members - defined first since others depend on it
+  const loadWatchlistMembers = useCallback(async (page: number = 1, limit: number = 20) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      console.log(`🔄 Loading watchlist members (page: ${page})`);
+      const result = await watchlistService.getWatchlistMembers(page, limit);
+      
+      if (page === 1) {
+        // First page - replace the list
+        setFollowingList(result.data?.following || []);
+      } else {
+        // Subsequent pages - append to the list
+        setFollowingList(prev => [...prev, ...(result.data?.following || [])]);
+      }
+      
+      setFollowingCount(result.data?.pagination?.total || 0);
+      
+      console.log(`✅ Loaded ${result.data?.following?.length || 0} watchlist members`);
+      console.log('🔍 useWatchlist: Setting followingList to:', result.data?.following);
+      console.log('🔍 useWatchlist: Setting followingCount to:', result.data?.pagination?.total);
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load watchlist members';
+      console.error('❌ Failed to load watchlist members:', err);
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Follow a user by wallet address
   const followUser = useCallback(async (walletAddress: string) => {
     setLoading(true);
@@ -24,10 +57,18 @@ export function useWatchlist() {
       console.log(`🔄 Following user: ${walletAddress}`);
       const result = await watchlistService.followWallet(walletAddress);
       
-      // Optimistically add to following list
-      setFollowingCount(prev => prev + 1);
-      
       console.log(`✅ Successfully followed user: ${walletAddress}`);
+      
+      // Refresh the watchlist to get the updated list with user data
+      try {
+        await loadWatchlistMembers(1, 50);
+        console.log('🔄 Refreshed watchlist after following user');
+      } catch (refreshError) {
+        console.warn('Failed to refresh watchlist after following:', refreshError);
+        // Still count as success since the follow operation worked
+        setFollowingCount(prev => prev + 1);
+      }
+      
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to follow user';
@@ -37,7 +78,7 @@ export function useWatchlist() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadWatchlistMembers]);
 
   // Unfollow a user by wallet address
   const unfollowUser = useCallback(async (walletAddress: string) => {
@@ -73,14 +114,23 @@ export function useWatchlist() {
       console.log(`🔄 Toggling follow status for: ${walletAddress}`);
       const result = await watchlistService.toggleFollow(walletAddress);
       
-      if (result.action === 'followed') {
-        setFollowingCount(prev => prev + 1);
-      } else {
-        setFollowingList(prev => prev.filter(user => user.walletAddress !== walletAddress));
-        setFollowingCount(prev => Math.max(0, prev - 1));
+      console.log(`✅ Successfully ${result.action} user: ${walletAddress}`);
+      
+      // Refresh the watchlist to get the updated list
+      try {
+        await loadWatchlistMembers(1, 50);
+        console.log(`🔄 Refreshed watchlist after ${result.action} user`);
+      } catch (refreshError) {
+        console.warn(`Failed to refresh watchlist after ${result.action}:`, refreshError);
+        // Fallback to manual state updates
+        if (result.action === 'followed') {
+          setFollowingCount(prev => prev + 1);
+        } else {
+          setFollowingList(prev => prev.filter(user => user.walletAddress !== walletAddress));
+          setFollowingCount(prev => Math.max(0, prev - 1));
+        }
       }
       
-      console.log(`✅ Successfully ${result.action} user: ${walletAddress}`);
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update follow status';
@@ -90,7 +140,7 @@ export function useWatchlist() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadWatchlistMembers]);
 
   // Check if following a specific user
   const isFollowing = useCallback(async (walletAddress: string): Promise<boolean> => {
@@ -106,37 +156,6 @@ export function useWatchlist() {
       return false;
     }
   }, [followingList]);
-
-  // Load watchlist members
-  const loadWatchlistMembers = useCallback(async (page: number = 1, limit: number = 20) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      console.log(`🔄 Loading watchlist members (page: ${page})`);
-      const result = await watchlistService.getWatchlistMembers(page, limit);
-      
-      if (page === 1) {
-        // First page - replace the list
-        setFollowingList(result.data?.following || []);
-      } else {
-        // Subsequent pages - append to the list
-        setFollowingList(prev => [...prev, ...(result.data?.following || [])]);
-      }
-      
-      setFollowingCount(result.data?.pagination?.total || 0);
-      
-      console.log(`✅ Loaded ${result.data?.following?.length || 0} watchlist members`);
-      return result;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load watchlist members';
-      console.error('❌ Failed to load watchlist members:', err);
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   // Refresh watchlist members
   const refreshWatchlist = useCallback(async () => {

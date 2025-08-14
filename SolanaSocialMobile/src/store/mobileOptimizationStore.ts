@@ -104,6 +104,9 @@ const defaultSettings: MobileOptimizationSettings = {
 };
 
 let performanceMonitoringInterval: NodeJS.Timeout | null = null;
+let appStateListener: any = null;
+let networkListener: any = null;
+let memoryListener: any = null;
 
 export const useMobileOptimizationStore = create<MobileOptimizationState>()(
   persist(
@@ -143,16 +146,30 @@ export const useMobileOptimizationStore = create<MobileOptimizationState>()(
           console.error('Failed to start performance monitoring:', error);
         }
 
+        // Clean up any existing listeners first
+        if (appStateListener) {
+          appStateListener.remove?.();
+          appStateListener = null;
+        }
+        if (networkListener) {
+          networkListener();
+          networkListener = null;
+        }
+        if (memoryListener) {
+          memoryListener.remove?.();
+          memoryListener = null;
+        }
+        
         try {
           // Set up app state listener
-          AppState.addEventListener('change', get().handleAppStateChange);
+          appStateListener = AppState.addEventListener('change', get().handleAppStateChange);
         } catch (error) {
           console.error('Failed to set up app state listener:', error);
         }
 
         try {
           // Set up network state listener
-          NetInfo.addEventListener(() => {
+          networkListener = NetInfo.addEventListener(() => {
             get().adaptToNetworkConditions();
           });
         } catch (error) {
@@ -161,7 +178,7 @@ export const useMobileOptimizationStore = create<MobileOptimizationState>()(
 
         try {
           // Set up memory pressure listener
-          DeviceEventEmitter.addListener('memoryWarning', () => {
+          memoryListener = DeviceEventEmitter.addListener('memoryWarning', () => {
             get().adaptToMemoryPressure();
           });
         } catch (error) {

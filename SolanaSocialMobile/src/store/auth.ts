@@ -11,7 +11,7 @@ import {
 } from '@/types/auth';
 import {authAPI} from '../services/api/auth';
 import {socialAPI} from '../services/api/social';
-import {setAuthToken} from '../services/api/client';
+import {setAuthToken, setTokenRefreshCallback, setAuthErrorCallback} from '../services/api/tokenManager';
 import {useWalletStore} from './wallet';
 import {isJWTExpired, getJWTTimeUntilExpiry} from '../utils/jwtUtils';
 
@@ -735,4 +735,38 @@ export const useAuthStore = create<AuthStore>()(
     },
   ),
 );
+
+// Setup callbacks to avoid circular dependencies
+setTokenRefreshCallback(async (): Promise<string> => {
+  const {refreshToken} = useAuthStore.getState();
+  
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  console.log('Attempting token refresh via callback...');
+  const authResponse = await authAPI.refreshToken(refreshToken);
+  
+  if (authResponse.success && authResponse.token) {
+    // Update the token in the token manager
+    setAuthToken(authResponse.token);
+    
+    // Update the auth store with new token
+    useAuthStore.setState({
+      token: authResponse.token,
+      user: authResponse.user || useAuthStore.getState().user,
+    });
+    
+    console.log('Token refresh successful');
+    return authResponse.token;
+  }
+  
+  throw new Error('Token refresh failed');
+});
+
+setAuthErrorCallback(async (): Promise<void> => {
+  console.warn('Authentication error - signing out user');
+  const {signOut} = useAuthStore.getState();
+  await signOut();
+});
 

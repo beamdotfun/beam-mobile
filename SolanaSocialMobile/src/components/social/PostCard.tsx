@@ -1422,7 +1422,7 @@ export function PostCard({
                       <View style={styles.trendingChip}>
                         <Text style={{fontSize: 12}}>💬</Text>
                         <Text style={styles.trendingText}>
-                          {post.quoteCount || 0}
+                          {post.quotesReceived72h || post.quotes_received_72h || 0}
                         </Text>
                       </View>
                     )}
@@ -1432,7 +1432,7 @@ export function PostCard({
                       <View style={styles.controversialChip}>
                         <Text style={{fontSize: 12}}>🌶️</Text>
                         <Text style={styles.controversialText}>
-                          0
+                          {post.votesReceived72h || ((post.upvotesReceived72h || 0) + (post.downvotesReceived72h || 0)) || 0}
                         </Text>
                       </View>
                     )}

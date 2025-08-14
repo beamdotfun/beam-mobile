@@ -55,20 +55,30 @@ export function SidebarMenu({visible, onClose, onNavigate}: SidebarMenuProps) {
   
   // Load comprehensive profile data when sidebar becomes visible
   React.useEffect(() => {
+    let isMounted = true;
+    
     if (visible && user) {
       console.log('🔍 SidebarMenu: Loading own comprehensive profile...');
       // Always load the authenticated user's own profile
       const loadOwnProfile = async () => {
         try {
           const profile = await socialAPI.getAuthenticatedUserProfile();
-          console.log('🔍 SidebarMenu: Own profile loaded:', profile);
-          setOwnProfile(profile);
+          if (isMounted) {
+            console.log('🔍 SidebarMenu: Own profile loaded:', profile);
+            setOwnProfile(profile);
+          }
         } catch (error) {
-          console.error('🔍 SidebarMenu: Failed to load own profile:', error);
+          if (isMounted) {
+            console.error('🔍 SidebarMenu: Failed to load own profile:', error);
+          }
         }
       };
       loadOwnProfile();
     }
+    
+    return () => {
+      isMounted = false;
+    };
   }, [visible, user]);
 
   // Debug user data whenever it changes
@@ -267,7 +277,7 @@ export function SidebarMenu({visible, onClose, onNavigate}: SidebarMenuProps) {
       displayName: profileData?.displayName || (user as any)?.displayName,
       username: profileData?.username || (user as any)?.username,
       name: profileData?.name || (user as any)?.name,
-      walletAddress: profileData?.primaryWalletAddress || profileData?.walletAddress || (user as any)?.primaryWalletAddress || (user as any)?.walletAddress
+      walletAddress: profileData?.walletAddress || profileData?.primaryWalletAddress || (user as any)?.walletAddress || (user as any)?.primaryWalletAddress
     });
   }, [ownProfile, user]);
 
@@ -305,10 +315,11 @@ export function SidebarMenu({visible, onClose, onNavigate}: SidebarMenuProps) {
     // Always use the authenticated user's own profile data
     const profileData = ownProfile || user;
     
-    const walletAddress = profileData?.primaryWalletAddress || 
+    // Try walletAddress first (from AuthenticatedUser type), then fallbacks
+    const walletAddress = profileData?.walletAddress || 
+                         profileData?.primaryWalletAddress || 
                          profileData?.wallet_address || 
                          profileData?.userWallet || 
-                         profileData?.walletAddress || 
                          user?.walletAddress;
     
     if (walletAddress) {
@@ -327,16 +338,10 @@ export function SidebarMenu({visible, onClose, onNavigate}: SidebarMenuProps) {
         console.log('🔍 SidebarMenu: Profile button clicked');
         console.log('🔍 SidebarMenu: Full user object:', JSON.stringify(user, null, 2));
         
-        // Backend uses primary_wallet_address, try multiple field names for compatibility
-        const walletAddress = user?.primary_wallet_address || 
-                             user?.primaryWalletAddress || 
-                             user?.walletAddress;
+        // Get wallet address - AuthenticatedUser type uses 'walletAddress'
+        const walletAddress = user?.walletAddress;
         
-        console.log('🔍 SidebarMenu: Wallet address fields check:');
-        console.log('  - primary_wallet_address:', user?.primary_wallet_address);
-        console.log('  - primaryWalletAddress:', user?.primaryWalletAddress);
-        console.log('  - walletAddress:', user?.walletAddress);
-        console.log('  - Final walletAddress:', walletAddress);
+        console.log('🔍 SidebarMenu: Wallet address:', walletAddress);
         
         if (!walletAddress) {
           console.log('🔍 SidebarMenu: User has no wallet address, navigating to profile without wallet params');

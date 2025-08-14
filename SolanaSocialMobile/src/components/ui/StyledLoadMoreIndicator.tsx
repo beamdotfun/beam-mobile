@@ -23,12 +23,14 @@ interface StyledLoadMoreIndicatorProps {
   onPress?: () => void;
   pendingPosts?: PendingPost[];
   isLoading?: boolean;
+  totalCount?: number; // Override the total count display
 }
 
 export function StyledLoadMoreIndicator({
   onPress,
   pendingPosts = [],
   isLoading = false,
+  totalCount,
 }: StyledLoadMoreIndicatorProps) {
   const {colors} = useThemeStore();
 
@@ -60,10 +62,10 @@ export function StyledLoadMoreIndicator({
     },
   ];
 
-  const displayPosts = pendingPosts.length > 0 ? pendingPosts : mockPendingPosts;
+  const displayPosts = pendingPosts.length > 0 ? pendingPosts : [];
   const visibleAvatars = displayPosts.slice(0, 3); // Show max 3 avatars
   const remainingCount = Math.max(0, displayPosts.length - 3);
-  const totalNewPosts = displayPosts.length;
+  const totalNewPosts = totalCount !== undefined ? totalCount : displayPosts.length;
 
   const styles = StyleSheet.create({
     container: {
@@ -152,6 +154,11 @@ export function StyledLoadMoreIndicator({
     
     return '20+ New posts';
   };
+  
+  // Don't render if we have no posts to display
+  if (totalNewPosts === 0 && !isLoading) {
+    return null;
+  }
 
   return (
     <Pressable

@@ -166,12 +166,23 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
       }
 
       // Load quotes if available using the quotedBy array
+      console.log('🔍 PostDetailScreen: Checking for quotes in post data:', {
+        hasQuotedBy: !!postData?.quoted_by,
+        quotedByLength: postData?.quoted_by?.length || 0,
+        hasQuotedByCamelCase: !!postData?.quotedBy,
+        quotedByCamelCaseLength: postData?.quotedBy?.length || 0,
+        postDataKeys: postData ? Object.keys(postData).filter(k => k.includes('quote')) : []
+      });
+      
       if (postData && postData.quoted_by && postData.quoted_by.length > 0) {
+        console.log('🔍 PostDetailScreen: Loading quotes from quoted_by field');
         loadQuotes(postData.quoted_by);
       } else if (postData && postData.quotedBy && postData.quotedBy.length > 0) {
         // Support both field names (quoted_by and quotedBy)
+        console.log('🔍 PostDetailScreen: Loading quotes from quotedBy field');
         loadQuotes(postData.quotedBy);
       } else {
+        console.log('🔍 PostDetailScreen: No quotes to load, setting empty array');
         setQuotePosts([]);
       }
     } catch (error: any) {
@@ -235,6 +246,13 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
 
   // Handle refresh with callback
   const loadQuotes = async (quoteSignatures: string[]) => {
+    console.log('🎯 PostDetailScreen.loadQuotes: Called with signatures:', {
+      count: quoteSignatures?.length || 0,
+      firstThree: quoteSignatures?.slice(0, 3) || [],
+      type: typeof quoteSignatures,
+      isArray: Array.isArray(quoteSignatures)
+    });
+    
     setQuotesLoading(true);
     try {
       console.log('🔍 PostDetailScreen: Loading quotes for post:', { 
@@ -243,23 +261,47 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
         signatures: quoteSignatures.slice(0, 3)
       });
       
-      // Fetch the actual posts using the signatures
-      const quotesResponse = await socialAPI.getPostsBySignatures(quoteSignatures);
+      // Validate signatures before making API call
+      const validSignatures = quoteSignatures.filter(sig => sig && typeof sig === 'string');
       
-      if (quotesResponse?.posts) {
+      if (validSignatures.length === 0) {
+        console.log('🔍 PostDetailScreen: No valid signatures to fetch');
+        setQuotePosts([]);
+        return;
+      }
+      
+      // Fetch the actual posts using the signatures
+      const quotesResponse = await socialAPI.getPostsBySignatures(validSignatures);
+      
+      console.log('🔍 PostDetailScreen: Quotes API response:', {
+        hasResponse: !!quotesResponse,
+        hasPosts: !!quotesResponse?.posts,
+        postsLength: quotesResponse?.posts?.length || 0,
+        responseKeys: quotesResponse ? Object.keys(quotesResponse) : []
+      });
+      
+      if (quotesResponse?.posts && Array.isArray(quotesResponse.posts)) {
         // Transform the posts to our Post type
         const transformedQuotes = quotesResponse.posts.map(transformProcessedPost);
         setQuotePosts(transformedQuotes);
         
-        console.log('🔍 PostDetailScreen: Quotes loaded successfully:', {
-          count: transformedQuotes.length
+        console.log('🔍 PostDetailScreen: Quotes loaded and transformed successfully:', {
+          count: transformedQuotes.length,
+          firstQuote: transformedQuotes[0] ? {
+            id: transformedQuotes[0].id,
+            signature: transformedQuotes[0].signature,
+            hasContent: !!transformedQuotes[0].content
+          } : null
         });
       } else {
-        console.log('🔍 PostDetailScreen: No quotes data in response');
+        console.log('🔍 PostDetailScreen: No quotes data in response or invalid format');
         setQuotePosts([]);
       }
-    } catch (error) {
-      console.error('Error loading quotes:', error);
+    } catch (error: any) {
+      console.error('🔍 PostDetailScreen: Error loading quotes:', {
+        error: error.message || error,
+        stack: error.stack
+      });
       setQuotePosts([]);
     } finally {
       setQuotesLoading(false);
@@ -836,8 +878,9 @@ export default function PostDetailScreen({navigation, route}: PostDetailScreenPr
                 <Text style={styles.quotesTitle}>Quotes</Text>
                 <View style={styles.quotesCountBadge}>
                   <Text style={styles.quotesCountText}>
-                    {post.quotedByCount || post.quoted_by_count || 
-                     post.quoted_by?.length || post.quotedBy?.length || quotePosts.length || 0}
+                    {quotePosts.length || 
+                     post.quotedByCount || post.quoted_by_count || 
+                     post.quoted_by?.length || post.quotedBy?.length || 0}
                   </Text>
                 </View>
               </View>

@@ -27,6 +27,7 @@ import {
   Check,
 } from 'lucide-react-native';
 import {AppNavBar} from '../../components/navigation/AppNavBar';
+import {SidebarMenu} from '../../components/navigation/SidebarMenu';
 import {useThemeStore} from '../../store/themeStore';
 import {useReceiptsStore} from '../../store/receiptsStore';
 import {Avatar} from '../../components/ui/avatar';
@@ -60,6 +61,7 @@ export default function ReceiptsScreen({navigation}: ReceiptsScreenProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(false);
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [showEditReceiptModal, setShowEditReceiptModal] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
@@ -449,6 +451,16 @@ export default function ReceiptsScreen({navigation}: ReceiptsScreenProps) {
     setShowToast(true);
   };
 
+  // Count uncategorized receipts for dynamic tab visibility
+  const uncategorizedCount = receipts.filter(receipt => !receipt.categoryId).length;
+
+  // Auto-switch to "all" if viewing uncategorized but no uncategorized items exist
+  useEffect(() => {
+    if (selectedCategory === 'uncategorized' && uncategorizedCount === 0) {
+      setSelectedCategory('all');
+    }
+  }, [selectedCategory, uncategorizedCount]);
+
   const filteredReceipts = receipts.filter(receipt => {
     const matchesSearch = searchQuery === '' || 
       receipt.post?.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -478,6 +490,21 @@ export default function ReceiptsScreen({navigation}: ReceiptsScreenProps) {
   useEffect(() => {
     handleRefreshStateChange(refreshing || isLoadingReceipts);
   }, [refreshing, isLoadingReceipts, handleRefreshStateChange]);
+
+  const handleSidebarNavigate = useCallback((screen: string, params?: any) => {
+    setSidebarVisible(false);
+    // Navigate based on the screen
+    if (screen === 'Profile') {
+      // Navigate to Profile screen (with params if provided, otherwise user's own profile)
+      navigation.navigate('Profile', params);
+    } else if (['Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
+                'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
+                'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'].includes(screen)) {
+      navigation.navigate(screen, params);
+    } else {
+      navigation.navigate('FeedHome');
+    }
+  }, [navigation]);
 
   const handleLoadMore = () => {
     if (hasMoreReceipts && !isLoadingReceipts) {
@@ -701,8 +728,7 @@ export default function ReceiptsScreen({navigation}: ReceiptsScreenProps) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppNavBar
         title="My Receipts"
-        showBackButton={true}
-        onBackPress={() => navigation.goBack()}
+        onProfilePress={() => setSidebarVisible(true)}
       />
       
       {/* Search */}
@@ -757,20 +783,22 @@ export default function ReceiptsScreen({navigation}: ReceiptsScreenProps) {
               </Text>
             </Pressable>
 
-            <Pressable
-              style={[
-                styles.categoryChip,
-                selectedCategory === 'uncategorized' && styles.categoryChipActive,
-              ]}
-              onPress={() => setSelectedCategory('uncategorized')}>
-              <Text
+            {uncategorizedCount > 0 && (
+              <Pressable
                 style={[
-                  styles.categoryChipText,
-                  selectedCategory === 'uncategorized' && styles.categoryChipTextActive,
-                ]}>
-                Uncategorized
-              </Text>
-            </Pressable>
+                  styles.categoryChip,
+                  selectedCategory === 'uncategorized' && styles.categoryChipActive,
+                ]}
+                onPress={() => setSelectedCategory('uncategorized')}>
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    selectedCategory === 'uncategorized' && styles.categoryChipTextActive,
+                  ]}>
+                  Uncategorized
+                </Text>
+              </Pressable>
+            )}
 
             {categories.map(category => (
               <Pressable
@@ -864,15 +892,17 @@ export default function ReceiptsScreen({navigation}: ReceiptsScreenProps) {
               <Text style={styles.modalOptionText}>All Receipts</Text>
             </Pressable>
 
-            <Pressable
-              style={styles.modalOption}
-              onPress={() => {
-                setSelectedCategory('uncategorized');
-                setShowCategoryModal(false);
-              }}>
-              <Folder size={20} color={colors.mutedForeground} />
-              <Text style={styles.modalOptionText}>Uncategorized</Text>
-            </Pressable>
+            {uncategorizedCount > 0 && (
+              <Pressable
+                style={styles.modalOption}
+                onPress={() => {
+                  setSelectedCategory('uncategorized');
+                  setShowCategoryModal(false);
+                }}>
+                <Folder size={20} color={colors.mutedForeground} />
+                <Text style={styles.modalOptionText}>Uncategorized</Text>
+              </Pressable>
+            )}
 
             {categories.map(category => (
               <Pressable
@@ -1097,6 +1127,13 @@ export default function ReceiptsScreen({navigation}: ReceiptsScreenProps) {
           </View>
         </Pressable>
       </Modal>
+
+      {/* Sidebar */}
+      <SidebarMenu
+        visible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+        onNavigate={handleSidebarNavigate}
+      />
     </SafeAreaView>
   );
 }

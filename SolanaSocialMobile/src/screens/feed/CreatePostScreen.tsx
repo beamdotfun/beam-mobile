@@ -11,8 +11,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image as RNImage,
-  Modal,
-  TouchableOpacity,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {
@@ -47,6 +45,7 @@ import {useWalletConnection} from '../../hooks/useWalletConnection';
 import {Avatar} from '../../components/ui/avatar';
 import {AnimatedButton} from '../../components/ui/AnimatedButton';
 import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
+import {SlideUpModal, SlideUpModalOption} from '../../components/ui/SlideUpModal';
 import {FeedStackScreenProps} from '../../types/navigation';
 import {socialAPI} from '../../services/api/social';
 
@@ -570,142 +569,6 @@ export default function CreatePostScreen({navigation, route}: Props) {
     buttonTextSpacing: {
       marginLeft: 4,
     },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'flex-end',
-    },
-    modalContent: {
-      backgroundColor: colors.background,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      paddingTop: 12,
-      paddingBottom: Platform.OS === 'ios' ? 34 : 24,
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: -4,
-      },
-      shadowOpacity: 0.25,
-      shadowRadius: 10,
-      elevation: 10,
-    },
-    modalHandle: {
-      width: 40,
-      height: 4,
-      backgroundColor: colors.border,
-      borderRadius: 2,
-      alignSelf: 'center',
-      marginBottom: 20,
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: colors.foreground,
-      fontFamily: 'Inter-Bold',
-      textAlign: 'center',
-      marginBottom: 8,
-      paddingHorizontal: 20,
-    },
-    modalSubtitle: {
-      fontSize: 14,
-      color: colors.mutedForeground,
-      fontFamily: 'Inter-Regular',
-      textAlign: 'center',
-      marginBottom: 24,
-      paddingHorizontal: 20,
-    },
-    modalOptions: {
-      paddingHorizontal: 20,
-      gap: 12,
-    },
-    modalOption: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    modalOptionIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: colors.primary + '15',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 16,
-    },
-    modalOptionContent: {
-      flex: 1,
-    },
-    modalOptionTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.foreground,
-      fontFamily: 'Inter-SemiBold',
-      marginBottom: 4,
-    },
-    modalOptionDescription: {
-      fontSize: 13,
-      color: colors.mutedForeground,
-      fontFamily: 'Inter-Regular',
-    },
-    modalCancelButton: {
-      marginTop: 12,
-      marginHorizontal: 20,
-      paddingVertical: 16,
-      borderRadius: 16,
-      backgroundColor: colors.muted,
-      alignItems: 'center',
-    },
-    modalCancelText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.foreground,
-      fontFamily: 'Inter-SemiBold',
-    },
-    // Discard modal specific styles
-    discardModalOptionIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 16,
-    },
-    discardIconBackground: {
-      backgroundColor: colors.destructive + '15',
-    },
-    continueIconBackground: {
-      backgroundColor: colors.success + '15',
-    },
-    discardModalButton: {
-      marginTop: 8,
-      marginHorizontal: 20,
-      paddingVertical: 16,
-      borderRadius: 16,
-      alignItems: 'center',
-    },
-    discardButton: {
-      backgroundColor: colors.destructive,
-    },
-    continueButton: {
-      backgroundColor: colors.muted,
-    },
-    discardButtonText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.destructive,
-      fontFamily: 'Inter-SemiBold',
-    },
-    continueButtonText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.foreground,
-      fontFamily: 'Inter-SemiBold',
-    },
   });
 
   const handleBack = () => {
@@ -1040,6 +903,43 @@ export default function CreatePostScreen({navigation, route}: Props) {
     uploadProgress.some(p => p.uploading) ||
     hasActiveWarnings();
 
+  // Media selection modal options
+  const mediaOptions: SlideUpModalOption[] = [
+    {
+      id: 'camera',
+      title: 'Take Photo or Video',
+      description: 'Capture a new moment with your camera',
+      icon: <Camera size={24} color={colors.primary} />,
+      onPress: openCamera,
+    },
+    {
+      id: 'gallery',
+      title: 'Choose from Gallery',
+      description: 'Select photos or videos from your device',
+      icon: <ImageIcon size={24} color={colors.primary} />,
+      onPress: openImageLibrary,
+    },
+  ];
+
+  // Discard confirmation modal options
+  const discardOptions: SlideUpModalOption[] = [
+    {
+      id: 'keep-writing',
+      title: 'Keep Writing',
+      description: 'Continue working on your post',
+      icon: <Edit3 size={24} color={colors.success} />,
+      onPress: handleKeepWriting,
+    },
+    {
+      id: 'discard',
+      title: 'Discard',
+      description: currentDraftId ? 'Delete changes and exit' : 'Delete post and exit',
+      icon: <Trash2 size={24} color={colors.destructive} />,
+      onPress: handleDiscard,
+      destructive: true,
+    },
+  ];
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LoadingOverlay
@@ -1356,125 +1256,26 @@ export default function CreatePostScreen({navigation, route}: Props) {
       </KeyboardAvoidingView>
 
       {/* Media Selection Modal */}
-      <Modal
+      <SlideUpModal
         visible={showMediaModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowMediaModal(false)}>
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowMediaModal(false)}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHandle} />
-            
-            <Text style={styles.modalTitle}>Add Media</Text>
-            <Text style={styles.modalSubtitle}>
-              Choose how you want to add photos or videos to your post
-            </Text>
-
-            <View style={styles.modalOptions}>
-              {/* Camera Option */}
-              <TouchableOpacity 
-                style={styles.modalOption}
-                onPress={openCamera}
-                activeOpacity={0.7}>
-                <View style={styles.modalOptionIcon}>
-                  <Camera size={24} color={colors.primary} />
-                </View>
-                <View style={styles.modalOptionContent}>
-                  <Text style={styles.modalOptionTitle}>Take Photo or Video</Text>
-                  <Text style={styles.modalOptionDescription}>
-                    Capture a new moment with your camera
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Gallery Option */}
-              <TouchableOpacity 
-                style={styles.modalOption}
-                onPress={openImageLibrary}
-                activeOpacity={0.7}>
-                <View style={styles.modalOptionIcon}>
-                  <ImageIcon size={24} color={colors.primary} />
-                </View>
-                <View style={styles.modalOptionContent}>
-                  <Text style={styles.modalOptionTitle}>Choose from Gallery</Text>
-                  <Text style={styles.modalOptionDescription}>
-                    Select photos or videos from your device
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {/* Cancel Button */}
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              onPress={() => setShowMediaModal(false)}
-              activeOpacity={0.7}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onClose={() => setShowMediaModal(false)}
+        title="Add Media"
+        subtitle="Choose how you want to add photos or videos to your post"
+        options={mediaOptions}
+      />
 
       {/* Discard Confirmation Modal */}
-      <Modal
+      <SlideUpModal
         visible={showDiscardModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowDiscardModal(false)}>
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowDiscardModal(false)}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHandle} />
-            
-            <Text style={styles.modalTitle}>
-              {currentDraftId ? 'Discard Changes?' : 'Discard Post?'}
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              {currentDraftId 
-                ? 'You have unsaved changes to this draft. Are you sure you want to discard them?'
-                : 'You have unsaved changes. Are you sure you want to discard this post?'
-              }
-            </Text>
-
-            <View style={styles.modalOptions}>
-              {/* Keep Writing Option */}
-              <TouchableOpacity 
-                style={styles.modalOption}
-                onPress={handleKeepWriting}
-                activeOpacity={0.7}>
-                <View style={[styles.discardModalOptionIcon, styles.continueIconBackground]}>
-                  <Edit3 size={24} color={colors.success} />
-                </View>
-                <View style={styles.modalOptionContent}>
-                  <Text style={styles.modalOptionTitle}>Keep Writing</Text>
-                  <Text style={styles.modalOptionDescription}>
-                    Continue working on your post
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Discard Option */}
-              <TouchableOpacity 
-                style={styles.modalOption}
-                onPress={handleDiscard}
-                activeOpacity={0.7}>
-                <View style={[styles.discardModalOptionIcon, styles.discardIconBackground]}>
-                  <Trash2 size={24} color={colors.destructive} />
-                </View>
-                <View style={styles.modalOptionContent}>
-                  <Text style={styles.modalOptionTitle}>Discard</Text>
-                  <Text style={styles.modalOptionDescription}>
-                    {currentDraftId ? 'Delete changes and exit' : 'Delete post and exit'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onClose={() => setShowDiscardModal(false)}
+        title={currentDraftId ? 'Discard Changes?' : 'Discard Post?'}
+        subtitle={currentDraftId 
+          ? 'You have unsaved changes to this draft. Are you sure you want to discard them?'
+          : 'You have unsaved changes. Are you sure you want to discard this post?'
+        }
+        options={discardOptions}
+        showCancel={false}
+      />
     </SafeAreaView>
   );
 }

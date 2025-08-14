@@ -11,7 +11,7 @@ import {socialAPI} from '../services/api/social';
 import {useWalletStore} from './wallet';
 
 // Helper function to transform API response to social posts (handles both processed_posts and original formats)
-const transformApiPost = (apiPost: any): Post => {
+export const transformApiPost = (apiPost: any): Post => {
   // Safety check for undefined or null apiPost
   if (!apiPost) {
     console.error('🚨 SocialStore.transformApiPost: Received null/undefined post');

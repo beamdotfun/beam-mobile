@@ -4,7 +4,8 @@ import {
   AuthenticatedUser,
   ProfileSetupData,
 } from '@/types/auth';
-import api, {getAuthToken} from './client';
+import api from './client';
+import {getAuthToken} from './tokenManager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Platform} from 'react-native';
 import {API_CONFIG} from '../../config/api';

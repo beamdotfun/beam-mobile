@@ -518,8 +518,13 @@ export const useDiscoveryStore = create<DiscoveryState>()(
       name: 'discovery-storage',
       storage: {
         getItem: async name => {
-          const value = await AsyncStorage.getItem(name);
-          return value ? JSON.parse(value) : null;
+          try {
+            const value = await AsyncStorage.getItem(name);
+            return value ? JSON.parse(value) : null;
+          } catch (error) {
+            console.error('Failed to get/parse item from AsyncStorage:', error);
+            return null;
+          }
         },
         setItem: async (name, value) => {
           await AsyncStorage.setItem(name, JSON.stringify(value));

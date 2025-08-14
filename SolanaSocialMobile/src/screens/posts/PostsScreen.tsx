@@ -27,6 +27,7 @@ import {
 import {Avatar} from '../../components/ui/avatar';
 import {SegmentedControl} from '../../components/ui/SegmentedControl';
 import {AppNavBar} from '../../components/navigation/AppNavBar';
+import {SidebarMenu} from '../../components/navigation/SidebarMenu';
 import {useThemeStore} from '../../store/themeStore';
 import {useAuthStore} from '../../store/auth';
 import {useDraftsStore} from '../../store/draftsStore';
@@ -152,6 +153,7 @@ export default function PostsScreen({navigation}: PostsScreenProps) {
   const {drafts, threads, isLoading, error, loadDrafts, loadThreads, deleteDraft, selectDraft, createDraft, clearError} = useDraftsStore();
   const [selectedTab, setSelectedTab] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(false);
 
   const [threadTitle, setThreadTitle] = useState('');
   const [threadPosts, setThreadPosts] = useState<ThreadPost[]>([
@@ -237,6 +239,21 @@ export default function PostsScreen({navigation}: PostsScreenProps) {
   const handleCreatePost = useCallback(() => {
     console.log('Navigate to create post');
     navigation.navigate('CreatePost');
+  }, [navigation]);
+
+  const handleSidebarNavigate = useCallback((screen: string, params?: any) => {
+    setSidebarVisible(false);
+    // Navigate based on the screen
+    if (screen === 'Profile') {
+      // Navigate to Profile screen (with params if provided, otherwise user's own profile)
+      navigation.navigate('Profile', params);
+    } else if (['Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
+                'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
+                'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'].includes(screen)) {
+      navigation.navigate(screen, params);
+    } else {
+      navigation.navigate('FeedHome');
+    }
   }, [navigation]);
 
   const handleAddThreadPost = useCallback(() => {
@@ -1039,7 +1056,7 @@ export default function PostsScreen({navigation}: PostsScreenProps) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppNavBar
         title="Posts"
-        onProfilePress={() => navigation.navigate('FeedHome')}
+        onProfilePress={() => setSidebarVisible(true)}
         onNewPostPress={handleCreatePost}
       />
 
@@ -1066,6 +1083,13 @@ export default function PostsScreen({navigation}: PostsScreenProps) {
       <View style={styles.content}>
         {renderTabContent()}
       </View>
+
+      {/* Sidebar */}
+      <SidebarMenu
+        visible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+        onNavigate={handleSidebarNavigate}
+      />
 
     </SafeAreaView>
   );

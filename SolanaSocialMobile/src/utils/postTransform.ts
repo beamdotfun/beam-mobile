@@ -48,6 +48,13 @@ export function transformProcessedPost(apiPost: any): Post {
     voteScore: (apiPost.userUpvotesReceived || 0) - (apiPost.userDownvotesReceived || 0),
     upvoteCount: apiPost.userUpvotesReceived || 0,
     downvoteCount: apiPost.userDownvotesReceived || 0,
+    
+    // 72-hour vote fields for controversial feed
+    upvotesReceived72h: apiPost.userUpvotesReceived72h || apiPost.upvotesReceived72h || 0,
+    downvotesReceived72h: apiPost.userDownvotesReceived72h || apiPost.downvotesReceived72h || 0,
+    votesReceived72h: (apiPost.userUpvotesReceived72h || apiPost.upvotesReceived72h || 0) + 
+                      (apiPost.userDownvotesReceived72h || apiPost.downvotesReceived72h || 0),
+    
     replyCount: apiPost.reply_count || apiPost.replyCount || apiPost.postReplyCount || 0,
     tipCount: apiPost.userTipsReceivedCount || 0,
     totalTipAmount: 0, // Will be calculated from tip data if available

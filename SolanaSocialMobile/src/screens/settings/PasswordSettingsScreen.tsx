@@ -14,6 +14,7 @@ import {Check, Mail, AlertCircle} from 'lucide-react-native';
 import {useThemeStore} from '../../store/themeStore';
 import {useAuthStore} from '../../store/auth';
 import {AppNavBar} from '../../components/navigation/AppNavBar';
+import {PasswordInput} from '../../components/ui/PasswordInput';
 
 interface PasswordSettingsScreenProps {
   navigation: any;
@@ -295,31 +296,28 @@ export default function PasswordSettingsScreen({navigation}: PasswordSettingsScr
 
               {/* Form Fields */}
               <View style={styles.formSection}>
-                <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>Current Password</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter your current password"
-                    placeholderTextColor={colors.mutedForeground}
-                    value={currentPassword}
-                    onChangeText={handleCurrentPasswordChange}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
+                <PasswordInput
+                  label="Current Password"
+                  placeholder="Enter your current password"
+                  value={currentPassword}
+                  onChangeText={handleCurrentPasswordChange}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  containerStyle={styles.fieldContainer}
+                  inputStyle={styles.textInput}
+                  labelStyle={styles.fieldLabel}
+                />
 
                 <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>New Password</Text>
-                  <TextInput
-                    style={styles.textInput}
+                  <PasswordInput
+                    label="New Password"
                     placeholder="Enter your new password"
-                    placeholderTextColor={colors.mutedForeground}
                     value={newPassword}
                     onChangeText={handleNewPasswordChange}
-                    secureTextEntry
                     autoCapitalize="none"
                     autoCorrect={false}
+                    inputStyle={styles.textInput}
+                    labelStyle={styles.fieldLabel}
                   />
                   
                   {/* Password Requirements */}
@@ -351,19 +349,17 @@ export default function PasswordSettingsScreen({navigation}: PasswordSettingsScr
                   </View>
                 </View>
 
-                <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>Confirm New Password</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Confirm your new password"
-                    placeholderTextColor={colors.mutedForeground}
-                    value={confirmPassword}
-                    onChangeText={handleConfirmPasswordChange}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
+                <PasswordInput
+                  label="Confirm New Password"
+                  placeholder="Confirm your new password"
+                  value={confirmPassword}
+                  onChangeText={handleConfirmPasswordChange}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  containerStyle={styles.fieldContainer}
+                  inputStyle={styles.textInput}
+                  labelStyle={styles.fieldLabel}
+                />
               </View>
 
               {/* Update Button */}

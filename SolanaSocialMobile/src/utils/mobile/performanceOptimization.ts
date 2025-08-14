@@ -127,6 +127,11 @@ export class PerformanceOptimizer {
       });
     };
 
+    // Clean up any existing interval first
+    if ((global as any).__memoryMonitorInterval) {
+      clearInterval((global as any).__memoryMonitorInterval);
+    }
+    
     const memoryInterval = setInterval(checkMemory, 2000); // Check every 2 seconds
     (global as any).__memoryMonitorInterval = memoryInterval;
   }
@@ -146,6 +151,11 @@ export class PerformanceOptimizer {
       });
     };
 
+    // Clean up any existing interval first
+    if ((global as any).__systemMonitorInterval) {
+      clearInterval((global as any).__systemMonitorInterval);
+    }
+    
     const systemInterval = setInterval(checkSystemState, 5000); // Check every 5 seconds
     (global as any).__systemMonitorInterval = systemInterval;
   }

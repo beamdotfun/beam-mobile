@@ -18,6 +18,7 @@ import {useThemeStore} from '../../store/themeStore';
 import {useAuthStore} from '../../store/auth';
 import {AuthStackScreenProps} from '../../types/navigation';
 import {Button} from '../../components/ui/button';
+import {PasswordInput} from '../../components/ui/PasswordInput';
 import {authAPI} from '../../services/api/auth';
 import {extractErrorMessage} from '../../utils/errorMessages';
 
@@ -292,21 +293,19 @@ export default function EmailSignInScreen({navigation}: Props) {
                 />
               </View>
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  value={password}
-                  onChangeText={(text) => {
-                    setPassword(text);
-                    if (error) setError(null);
-                  }}
-                  placeholder="Enter your password"
-                  placeholderTextColor={colors.mutedForeground}
-                  secureTextEntry
-                  autoComplete="password"
-                />
-              </View>
+              <PasswordInput
+                label="Password"
+                value={password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  if (error) setError(null);
+                }}
+                placeholder="Enter your password"
+                autoComplete="password"
+                containerStyle={styles.inputContainer}
+                inputStyle={styles.input}
+                labelStyle={styles.label}
+              />
 
               <TouchableOpacity
                 style={[

@@ -1,5 +1,6 @@
 import {SolanaMobileWalletAdapter} from '../wallet/adapter';
-import api, {setAuthToken, getAuthToken} from '../api/client';
+import api from '../api/client';
+import {setAuthToken, getAuthToken} from '../api/tokenManager';
 import {AuthRequest, AuthResponse, ApiResponse} from '../api/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 

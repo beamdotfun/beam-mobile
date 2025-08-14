@@ -72,6 +72,15 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
   // Tab state
   const [activeTab, setActiveTab] = useState<'users' | 'tokens'>('users');
 
+  // Sync local state with hook state
+  useEffect(() => {
+    console.log('🔄 WatchlistScreen: Syncing followingList to localFollowingList', {
+      hookFollowingListLength: followingList.length,
+      localFollowingListLength: localFollowingList.length
+    });
+    setLocalFollowingList(followingList);
+  }, [followingList]);
+
   // Load watchlist users on mount - use setTimeout to not block initial render
   useEffect(() => {
     console.log('🔄 WatchlistScreen: Loading watchlist members on mount');
@@ -150,6 +159,7 @@ export default function WatchlistScreen({navigation}: WatchlistScreenProps) {
         'Posts',
         'Receipts',
         'Watchlist',
+        'Tokens',
         'Points',
         'Business',
         'HelpCenter',

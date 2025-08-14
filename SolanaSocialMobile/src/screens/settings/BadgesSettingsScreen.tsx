@@ -161,7 +161,7 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
   
   // Local state for new badge system
   const [showBadges, setShowBadges] = useState(true);
-  const [badges, setBadges] = useState<UIBadge[]>(mockBadges);
+  const [badges, setBadges] = useState<UIBadge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -177,12 +177,14 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
         const badgesData = await badgeAPI.getUserBadges();
         
         console.log('🔍 BadgesSettingsScreen: Badge API response received');
-        console.log('  - badges count:', badgesData.badges.length);
+        console.log('  - badges:', badgesData.badges);
+        console.log('  - badges count:', badgesData.badges?.length || 0);
         console.log('  - badgesEnabled:', badgesData.badgesEnabled);
         console.log('  - raw badges:', JSON.stringify(badgesData.badges, null, 2));
         
-        // Convert API badges to UI format
-        const uiBadges = badgesData.badges.map(mapApiBadgeToUI);
+        // Convert API badges to UI format, handle null/undefined badges array
+        const badgesArray = badgesData.badges || [];
+        const uiBadges = badgesArray.map(mapApiBadgeToUI);
         
         console.log('🔍 BadgesSettingsScreen: Converted to UI format');
         console.log('  - UI badges count:', uiBadges.length);
@@ -195,9 +197,9 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
         console.error('🚨 BadgesSettingsScreen: Failed to load badges:', err);
         setError(err instanceof Error ? err.message : 'Failed to load badges');
         
-        // Fallback to mock data
+        // Fallback to mock data or empty array
         console.log('🔍 BadgesSettingsScreen: Using fallback mock data');
-        setBadges(mockBadges);
+        setBadges(mockBadges || []);
         
       } finally {
         setLoading(false);
@@ -228,7 +230,7 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
     try {
       // Optimistic update
       setBadges(prev =>
-        prev.map(badge =>
+        (prev || []).map(badge =>
           badge.id === badgeId ? { ...badge, visible } : badge
         )
       );
@@ -240,7 +242,7 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
       
       // Revert on error
       setBadges(prev =>
-        prev.map(badge =>
+        (prev || []).map(badge =>
           badge.id === badgeId ? { ...badge, visible: !visible } : badge
         )
       );
@@ -248,8 +250,8 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
     }
   }, []);
 
-  const earnedBadgesCount = badges.filter(badge => badge.earned).length;
-  const visibleBadgesCount = badges.filter(badge => badge.visible && badge.earned).length;
+  const earnedBadgesCount = badges?.filter(badge => badge.earned).length || 0;
+  const visibleBadgesCount = badges?.filter(badge => badge.visible && badge.earned).length || 0;
 
   const styles = StyleSheet.create({
     container: {
@@ -521,7 +523,7 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
   }
 
   // Show error state if no badges loaded
-  if (error && badges.length === 0) {
+  if (error && (!badges || badges.length === 0)) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <AppNavBar
@@ -537,12 +539,13 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
             try {
               setLoading(true);
               const badgesData = await badgeAPI.getUserBadges();
-              const uiBadges = badgesData.badges.map(mapApiBadgeToUI);
+              const badgesArray = badgesData.badges || [];
+              const uiBadges = badgesArray.map(mapApiBadgeToUI);
               setBadges(uiBadges);
               setShowBadges(badgesData.badgesEnabled);
             } catch (err) {
               setError(err instanceof Error ? err.message : 'Failed to load badges');
-              setBadges(mockBadges);
+              setBadges(mockBadges || []);
             } finally {
               setLoading(false);
             }
@@ -618,7 +621,39 @@ export default function BadgesSettingsScreen({navigation}: BadgesSettingsScreenP
           <Text style={styles.subHeader}>Individual Badge Settings</Text>
           
           <View style={styles.badgesList}>
-            {badges.map(renderBadgeRow)}
+            {badges && badges.length > 0 ? (
+              badges.map(renderBadgeRow)
+            ) : (
+              <View style={{
+                alignItems: 'center',
+                paddingVertical: 32,
+                backgroundColor: colors.muted + '50',
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}>
+                <Award size={32} color={colors.mutedForeground} />
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: '500',
+                  color: colors.foreground,
+                  fontFamily: 'Inter-Medium',
+                  marginTop: 8,
+                  marginBottom: 4,
+                }}>
+                  No Badges Yet
+                </Text>
+                <Text style={{
+                  fontSize: 14,
+                  color: colors.mutedForeground,
+                  fontFamily: 'Inter-Regular',
+                  textAlign: 'center',
+                  paddingHorizontal: 16,
+                }}>
+                  Start participating in the community to earn badges that will appear here.
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Badge Statistics */}

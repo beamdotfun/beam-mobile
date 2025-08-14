@@ -28,7 +28,7 @@ export default function NotificationsScreen({navigation}: NotificationsScreenPro
     const feedTabScreens = [
       'Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
       'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
-      'Posts', 'Receipts', 'Watchlist', 'Points', 'Business', 'HelpCenter'
+      'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'
     ];
     
     if (feedTabScreens.includes(screen)) {

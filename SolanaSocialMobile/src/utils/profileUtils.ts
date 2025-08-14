@@ -25,16 +25,16 @@ export const getProfilePictureUrl = (profilePicture: any): string | undefined =>
 
 // Helper function to get profile picture from user/profile data with fallbacks
 export const getUserProfilePicture = (userData: any): string | undefined => {
-  // Check for brand logo first (if it's a brand user)
-  if (userData?.userIsBrand && userData?.brandLogoUrl) {
+  // Check for brand logo first (if it's a brand user) - fix field name to match API
+  if (userData?.isBrand && userData?.brandLogoUrl) {
     return getProfilePictureUrl(userData.brandLogoUrl);
   }
   
-  // Check all possible field names for profile pictures
-  return getProfilePictureUrl(userData?.profilePicture) || 
-         getProfilePictureUrl(userData?.profile_image_url) ||
-         getProfilePictureUrl(userData?.avatar_url) ||
-         getProfilePictureUrl(userData?.userProfileImageUri) ||
-         getProfilePictureUrl(userData?.profileImageUrl) ||
-         getProfilePictureUrl(userData?.brand_logo_url);
+  // Prioritize API fields first, then fallbacks for other sources
+  return getProfilePictureUrl(userData?.profileImageUrl) ||      // Primary API field
+         getProfilePictureUrl(userData?.profilePicture) ||       // Legacy fallback
+         getProfilePictureUrl(userData?.profile_image_url) ||    // Snake case variant
+         getProfilePictureUrl(userData?.avatar_url) ||           // Alternative field
+         getProfilePictureUrl(userData?.userProfileImageUri) ||  // Other legacy field
+         getProfilePictureUrl(userData?.brand_logo_url);         // Brand fallback
 };

@@ -906,5 +906,5 @@ export const useNotificationStore = create<NotificationState>()(
   })),
 );
 
-// Initialize store when imported
-useNotificationStore.getState().initialize();
+// Don't auto-initialize - let components initialize when ready
+// useNotificationStore.getState().initialize();

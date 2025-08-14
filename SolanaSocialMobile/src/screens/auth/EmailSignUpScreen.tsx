@@ -18,6 +18,7 @@ import {useThemeStore} from '../../store/themeStore';
 import {useAuthStore} from '../../store/auth';
 import {AuthStackScreenProps} from '../../types/navigation';
 import {Button} from '../../components/ui/button';
+import {PasswordInput} from '../../components/ui/PasswordInput';
 import {authAPI} from '../../services/api/auth';
 
 type Props = AuthStackScreenProps<'EmailSignUp'>;
@@ -294,34 +295,28 @@ export default function EmailSignUpScreen({navigation}: Props) {
                 />
               </View>
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Create a password"
-                  placeholderTextColor={colors.mutedForeground}
-                  secureTextEntry
-                  autoComplete="new-password"
-                />
-                <Text style={styles.passwordHelper}>
-                  Must be at least 8 characters long
-                </Text>
-              </View>
+              <PasswordInput
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Create a password"
+                autoComplete="new-password"
+                helperText="Must be at least 8 characters long"
+                containerStyle={styles.inputContainer}
+                inputStyle={styles.input}
+                labelStyle={styles.label}
+              />
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Confirm Password</Text>
-                <TextInput
-                  style={styles.input}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="Confirm your password"
-                  placeholderTextColor={colors.mutedForeground}
-                  secureTextEntry
-                  autoComplete="new-password"
-                />
-              </View>
+              <PasswordInput
+                label="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Confirm your password"
+                autoComplete="new-password"
+                containerStyle={styles.inputContainer}
+                inputStyle={styles.input}
+                labelStyle={styles.label}
+              />
 
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>

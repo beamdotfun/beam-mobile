@@ -2,6 +2,7 @@ import {create, ApiResponse as ApisauceResponse} from 'apisauce';
 import {API_CONFIG} from '../../config/api';
 import {useOfflineStore} from '../../store/offlineStore';
 import {Platform} from 'react-native';
+import {getAuthToken, setAuthToken, handleTokenRefresh, handleAuthError} from './tokenManager';
 
 // Base API configuration
 const baseApi = create({
@@ -12,14 +13,8 @@ const baseApi = create({
   },
 });
 
-// Auth token management (will be implemented with wallet integration)
-let authToken: string | null = null;
-
-export const setAuthToken = (token: string | null) => {
-  authToken = token;
-};
-
-export const getAuthToken = () => authToken;
+// Re-export token management functions for backward compatibility
+export {getAuthToken, setAuthToken};
 
 // Enhanced API client with offline support
 class OfflineAwareAPIClient {
@@ -29,13 +24,13 @@ class OfflineAwareAPIClient {
     // Request interceptor for authentication
     this.baseApi.addRequestTransform(request => {
       // Add auth token if available
-      const authToken = getAuthToken();
-      console.log('API Client - Auth token available:', !!authToken, 'URL:', request.url);
-      if (authToken && request.headers) {
-        request.headers.Authorization = `Bearer ${authToken}`;
+      const token = getAuthToken();
+      console.log('API Client - Auth token available:', !!token, 'URL:', request.url);
+      if (token && request.headers) {
+        request.headers.Authorization = `Bearer ${token}`;
         console.log('API Client - Added Authorization header for:', request.url);
       } else {
-        console.log('API Client - No auth token or headers for:', request.url, 'Token:', !!authToken, 'Headers:', !!request.headers);
+        console.log('API Client - No auth token or headers for:', request.url, 'Token:', !!token, 'Headers:', !!request.headers);
       }
     });
 
@@ -45,10 +40,11 @@ class OfflineAwareAPIClient {
         console.error('API Error:', response.problem, response.data);
 
         // Handle token expiration with automatic refresh
-        if (response.status === 401 && authToken) {
+        const currentToken = getAuthToken();
+        if (response.status === 401 && currentToken) {
           console.log('Access token expired, attempting refresh...');
           try {
-            await this.handleTokenRefresh();
+            await this.handleTokenRefreshInternal();
             // Don't retry here - let the calling code handle retry logic
           } catch (error) {
             console.error('Token refresh failed:', error);
@@ -59,44 +55,18 @@ class OfflineAwareAPIClient {
     });
   }
 
-  private async handleTokenRefresh() {
-    // Import dynamically to avoid circular dependencies
-    const {useAuthStore} = await import('../../store/auth');
-    const {authAPI} = await import('./auth');
-    
-    const {refreshToken} = useAuthStore.getState();
-    
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
+  private async handleTokenRefreshInternal() {
+    try {
+      return await handleTokenRefresh();
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      throw error;
     }
-
-    console.log('Attempting token refresh...');
-    const authResponse = await authAPI.refreshToken(refreshToken);
-    
-    if (authResponse.success && authResponse.token) {
-      // Update the token in the API client
-      setAuthToken(authResponse.token);
-      
-      // Update the auth store with new token
-      useAuthStore.setState({
-        token: authResponse.token,
-        user: authResponse.user || useAuthStore.getState().user,
-      });
-      
-      console.log('Token refresh successful');
-      return authResponse.token;
-    }
-    
-    throw new Error('Token refresh failed');
   }
 
   private async handleAuthenticationError() {
-    // Import dynamically to avoid circular dependencies
-    const {useAuthStore} = await import('../../store/auth');
-    const {signOut} = useAuthStore.getState();
-
-    console.warn('Authentication error - signing out user');
-    await signOut();
+    console.warn('Authentication error - handling via callback');
+    await handleAuthError();
   }
 
   async get<T>(
@@ -131,7 +101,7 @@ class OfflineAwareAPIClient {
         params,
         baseURL: this.baseApi.axiosInstance?.defaults?.baseURL || API_CONFIG.BASE_URL,
         fullURL: `${API_CONFIG.BASE_URL}${endpoint}`,
-        hasAuthToken: !!authToken,
+        hasAuthToken: !!getAuthToken(),
       });
       
       const response = await this.baseApi.get<T>(endpoint, params, config);

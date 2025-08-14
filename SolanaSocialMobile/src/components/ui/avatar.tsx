@@ -77,11 +77,17 @@ export function Avatar({
     },
   });
 
+  const [imageError, setImageError] = React.useState(false);
+  
   return (
     <View style={styles.container}>
       {showRing && <View style={styles.ring} />}
-      {src ? (
-        <Image source={{uri: src}} style={styles.avatar} />
+      {src && !imageError ? (
+        <Image 
+          source={{uri: src}} 
+          style={styles.avatar}
+          onError={() => setImageError(true)}
+        />
       ) : (
         <View style={styles.avatar}>
           <Text style={styles.fallbackText}>{fallback || 'U'}</Text>

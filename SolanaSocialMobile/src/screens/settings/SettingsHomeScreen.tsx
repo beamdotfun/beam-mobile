@@ -17,7 +17,8 @@ import {
   Coins,
   Award,
 } from 'lucide-react-native';
-import {ConsistentHeader} from '../../components/navigation/ConsistentHeader';
+import {AppNavBar} from '../../components/navigation/AppNavBar';
+import {SidebarMenu} from '../../components/navigation/SidebarMenu';
 import {useThemeStore} from '../../store/themeStore';
 import {useAuthStore} from '../../store/auth';
 import {useProfileStore} from '../../store/profileStore';
@@ -90,6 +91,7 @@ export default function SettingsHomeScreen({navigation}: SettingsHomeScreenProps
   const {colors} = useThemeStore();
   const {user} = useAuthStore();
   const {loadProfile, currentProfile} = useProfileStore();
+  const [sidebarVisible, setSidebarVisible] = useState(false);
 
   // Load user profile when settings screen is accessed
   useEffect(() => {
@@ -120,6 +122,21 @@ export default function SettingsHomeScreen({navigation}: SettingsHomeScreenProps
       console.log('🔍 SettingsHomeScreen: No wallet address found or no user object');
     }
   }, [user, loadProfile]); // Watch the entire user object for changes
+
+  const handleSidebarNavigate = useCallback((screen: string, params?: any) => {
+    setSidebarVisible(false);
+    // Navigate based on the screen
+    if (screen === 'Profile') {
+      // Navigate to Profile screen (with params if provided, otherwise user's own profile)
+      navigation.navigate('Profile', params);
+    } else if (['Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
+                'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
+                'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'].includes(screen)) {
+      navigation.navigate(screen, params);
+    } else {
+      navigation.navigate('FeedHome');
+    }
+  }, [navigation]);
 
   const handleCategoryPress = useCallback((category: SettingsCategory) => {
     console.log('Navigate to:', category.screen);
@@ -196,7 +213,10 @@ export default function SettingsHomeScreen({navigation}: SettingsHomeScreenProps
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ConsistentHeader title="Settings" onBack={() => navigation.navigate('FeedHome')} />
+      <AppNavBar 
+        title="Settings" 
+        onProfilePress={() => setSidebarVisible(true)} 
+      />
 
       <ScrollView style={styles.categoriesList} showsVerticalScrollIndicator={false}>
         {settingsCategories.map((category, index) => (
@@ -230,6 +250,12 @@ export default function SettingsHomeScreen({navigation}: SettingsHomeScreenProps
         ))}
       </ScrollView>
 
+      {/* Sidebar */}
+      <SidebarMenu
+        visible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+        onNavigate={handleSidebarNavigate}
+      />
     </SafeAreaView>
   );
 }

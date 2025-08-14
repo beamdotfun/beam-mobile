@@ -48,7 +48,6 @@ import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import {getProfilePictureUrl, getUserProfilePicture} from '../../utils/profileUtils';
 import {logMemoryUsage, isMemoryUsageCritical, forceGarbageCollection} from '../../utils/memoryUtils';
 import {ProfileSkeleton} from '../../components/loading/FeedSkeleton';
-import {LoadingOverlay} from '../../components/ui/LoadingOverlay';
 import {Skeleton} from '../../components/ui/Skeleton';
 import {debouncedNavigate} from '../../utils/navigationUtils';
 import {useScreenCleanup} from '../../hooks/useScreenCleanup';
@@ -101,6 +100,7 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
     loadUserPosts,
     followUser,
     unfollowUser,
+    clearForNavigation,
   } = useProfileStore();
 
   // Backend uses primary_wallet_address, try multiple field names for compatibility
@@ -111,6 +111,15 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
   
   // Get wallet address from route params (use username as fallback if no walletAddress provided)
   const routeWalletAddress = route.params?.walletAddress || route.params?.username;
+  
+  // Add effect to log param changes
+  React.useEffect(() => {
+    console.log('🔍 ProfileScreen: Route params changed:', {
+      walletAddress: route.params?.walletAddress,
+      username: route.params?.username,
+      allParams: route.params
+    });
+  }, [route.params?.walletAddress, route.params?.username]);
   
   // Debug the route params types and values
   console.log('🔍 ProfileScreen DEBUG: Raw route params types:', {
@@ -127,7 +136,8 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
   const isOwnProfile = !routeWalletAddress || routeWalletAddress === userWalletAddress;
   
   // Target wallet address - use route param if provided, otherwise own wallet
-  const targetWalletAddress = routeWalletAddress || userWalletAddress || '';
+  // CRITICAL FIX: Don't use empty string as wallet address - it causes API crashes
+  const targetWalletAddress = routeWalletAddress || userWalletAddress || null;
   
   // Blockchain interactions
   const {upvote, downvote, loading: votingLoading, error: votingError} = useVoting();
@@ -201,7 +211,8 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
   console.log('  - error:', error);
 
   // Get profile data from store or use logged-in user data
-  const profileData = currentProfile || (isOwnProfile && user && userWalletAddress ? {
+  // Important: Don't fall back to user data when loading another user's profile
+  const profileData = currentProfile || (isOwnProfile && !routeWalletAddress && user && userWalletAddress ? {
     userWallet: userWalletAddress,
     displayName: user.displayName || user.name || 'Unknown',
     description: user.bio || '',
@@ -249,7 +260,11 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
   };
 
   // Load user badges function
-  const loadUserBadges = useCallback(async (targetWalletAddress: string) => {
+  const loadUserBadges = useCallback(async (targetWalletAddress: string | null) => {
+    if (!targetWalletAddress) {
+      console.log('🔍 ProfileScreen: No wallet address for badges');
+      return;
+    }
     console.log('🔍 ProfileScreen: Loading badges for user:', targetWalletAddress);
     setBadgesLoading(true);
     
@@ -287,6 +302,15 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
     }
   }, [isOwnProfile]);
 
+  // Immediate profile clearing when switching users - runs synchronously before render
+  useEffect(() => {
+    // Clear profile data IMMEDIATELY when routeWalletAddress changes to prevent flash
+    if (routeWalletAddress && currentProfile && currentProfile.userWallet !== routeWalletAddress) {
+      console.log('🚨 ProfileScreen: IMMEDIATE clear - switching from', currentProfile.userWallet, 'to', routeWalletAddress);
+      clearForNavigation();
+    }
+  }, [routeWalletAddress, clearForNavigation]); // Only depend on routeWalletAddress changes
+
   useEffect(() => {
     console.log('🔍 ProfileScreen useEffect: Running with params:', {routeWalletAddress, targetWalletAddress, isOwnProfile});
     logMemoryUsage('ProfileScreen - Component Mount');
@@ -309,11 +333,11 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
       loadingInProgressRef.current = true;
       
       try {
-        // Clear any existing profile data first to prevent showing wrong user
+        // Clear immediately when switching to a different user to prevent flash
         if (routeWalletAddress && !isOwnProfile) {
-          console.log('🔍 ProfileScreen: Clearing profile data before loading new user');
+          console.log('🔍 ProfileScreen: Clearing profile data IMMEDIATELY before loading new user');
           if (isMountedRef.current) {
-            useProfileStore.setState({ currentProfile: null, userPosts: [], socialStats: null });
+            clearForNavigation(); // Use new method that sets loading state immediately
           }
         }
         
@@ -323,10 +347,10 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
           console.log('📊 ProfileScreen: Loading profile with visit tracking from post:', profileVisitFrom);
         }
         
-        // Load profile first
-        if (!isCancelled && isMountedRef.current) {
-          console.log('🔍 ProfileScreen: Loading profile...');
-          await loadProfile(routeWalletAddress, profileVisitFrom);
+        // Load profile first - use targetWalletAddress which correctly resolves the address
+        if (!isCancelled && isMountedRef.current && targetWalletAddress) {
+          console.log('🔍 ProfileScreen: Loading profile for targetWalletAddress:', targetWalletAddress);
+          await loadProfile(targetWalletAddress, profileVisitFrom);
           console.log('🔍 ProfileScreen: loadProfile completed successfully');
         }
         
@@ -374,7 +398,7 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
         useProfileStore.setState({ userPosts: [] });
       }
     };
-  }, [routeWalletAddress, targetWalletAddress, isOwnProfile]);
+  }, [routeWalletAddress, targetWalletAddress, isOwnProfile, clearForNavigation]);
 
   // Check following status when component mounts or wallet changes
   useEffect(() => {
@@ -1070,7 +1094,7 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
     const feedTabScreens = [
       'Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
       'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
-      'Posts', 'Receipts', 'Watchlist', 'Points', 'Business', 'HelpCenter'
+      'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'
     ];
     
     if (feedTabScreens.includes(screen)) {
@@ -1083,9 +1107,36 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
         });
       }
     } else if (screen === 'Profile') {
-      // Profile exists in Feed navigator, navigate to UserProfile (both use ProfileScreen component)
-      // Use debounced navigation to prevent rapid navigation
-      debouncedNavigate(navigation, 'UserProfile', params);
+      // Navigate to current user's profile
+      console.log('🔍 ProfileScreen.handleSidebarNavigate: Profile clicked');
+      console.log('🔍 ProfileScreen.handleSidebarNavigate: Params received:', params);
+      console.log('🔍 ProfileScreen.handleSidebarNavigate: Current route params:', route.params);
+      
+      // Check if we need to navigate to own profile
+      const targetWallet = params?.walletAddress;
+      const currentWallet = route.params?.walletAddress;
+      
+      console.log('🔍 ProfileScreen.handleSidebarNavigate: Target wallet:', targetWallet);
+      console.log('🔍 ProfileScreen.handleSidebarNavigate: Current wallet:', currentWallet);
+      
+      if (targetWallet && targetWallet !== currentWallet) {
+        // Different wallet, navigate to it
+        console.log('🔍 ProfileScreen.handleSidebarNavigate: Navigating to different profile');
+        // Use popToTop to clear the stack and then navigate
+        navigation.popToTop();
+        setTimeout(() => {
+          navigation.navigate('UserProfile', params);
+        }, 100);
+      } else if (!targetWallet && currentWallet) {
+        // No target wallet but we're on someone else's profile, go to own profile
+        console.log('🔍 ProfileScreen.handleSidebarNavigate: Navigating to own profile (no wallet in params)');
+        navigation.popToTop();
+        setTimeout(() => {
+          navigation.navigate('Profile');
+        }, 100);
+      } else {
+        console.log('🔍 ProfileScreen.handleSidebarNavigate: Same profile, no navigation needed');
+      }
     } else {
       console.log(`Navigate to ${screen}`, params);
     }
@@ -1735,6 +1786,21 @@ export default function ProfileScreen({navigation, route}: ProfileScreenProps) {
         )}
       </Animated.ScrollView>
 
+
+      {/* Profile skeleton for smooth loading transitions */}
+      {(loading && !currentProfile) && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 999,
+          }}>
+          <ProfileSkeleton />
+        </View>
+      )}
 
       {/* Sidebar Menu */}
       <SidebarMenu

@@ -50,6 +50,7 @@ interface ProfileState {
 
   // Helpers
   clearProfile: () => void;
+  clearForNavigation: () => void;
   updateCurrentProfile: (updates: Partial<UserProfile>) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -94,7 +95,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       return;
     }
     
-    // Check if we're switching to a different user profile - if so, clear all data
+    // Check if we're switching to a different user profile
     const currentProfileWallet = currentState.currentProfile?.userWallet;
     const isSwitchingUsers = walletAddress && currentProfileWallet && currentProfileWallet !== walletAddress;
     
@@ -104,8 +105,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       isSwitchingUsers
     });
     
+    // ALWAYS clear data immediately when switching users to prevent flash
     if (isSwitchingUsers) {
-      console.log('🔍 ProfileStore.loadProfile: Switching users - clearing all profile data');
+      console.log('🔍 ProfileStore.loadProfile: Switching users - clearing all profile data IMMEDIATELY');
+      // Clear immediately to prevent showing old data
       set({
         currentProfile: null,
         userPosts: [],
@@ -116,10 +119,17 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         activityPage: 1,
         activityHasMore: true,
         error: null,
+        loading: true, // Set loading immediately
       });
     }
     
-    set({loading: true, error: null, loadInProgress: true});
+    // Only set loading if we haven't already set it during user switch
+    if (!isSwitchingUsers) {
+      set({loading: true, error: null, loadInProgress: true});
+    } else {
+      // Just mark load in progress since loading is already true
+      set({loadInProgress: true});
+    }
 
     try {
       // Check if this is the current user's own profile
@@ -135,6 +145,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
       console.log('🔍 ProfileStore.loadProfile: Making API calls...');
       console.log('🔍 ProfileStore.loadProfile: Using endpoint:', isOwnProfile ? 'getAuthenticatedUserProfile' : 'getUserProfile');
+      
+      // Safety check: Don't call getUserProfile without a wallet address
+      if (!isOwnProfile && !walletAddress) {
+        console.error('🚨 ProfileStore.loadProfile: Cannot load other user profile without wallet address');
+        set({loading: false, error: 'No wallet address provided', loadInProgress: false});
+        return;
+      }
       
       // Load profile data (required)
       const profileResponse = await (isOwnProfile ? 
@@ -259,7 +276,14 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   // Load user posts
-  loadUserPosts: async (walletAddress: string, refresh = false) => {
+  loadUserPosts: async (walletAddress: string | null, refresh = false) => {
+    // Safety check: Don't proceed without a wallet address
+    if (!walletAddress) {
+      console.error('🚨 ProfileStore.loadUserPosts: No wallet address provided');
+      set({postsLoading: false});
+      return;
+    }
+    
     console.log('🔍 ProfileStore.loadUserPosts: Starting for walletAddress:', walletAddress, 'refresh:', refresh);
     
     // Check if we're switching to a different user - if so, clear posts and force refresh
@@ -754,6 +778,26 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       activityPage: 1,
       activityHasMore: true,
       error: null,
+    });
+  },
+
+  // Clear profile for navigation - sets loading state immediately
+  clearForNavigation: () => {
+    console.log('🧹 ProfileStore.clearForNavigation: Clearing profile for navigation');
+    set({
+      currentProfile: null,
+      userPosts: [],
+      userActivity: [],
+      socialStats: null,
+      postsPage: 1,
+      postsHasMore: true,
+      activityPage: 1,
+      activityHasMore: true,
+      error: null,
+      loading: true, // Show loading immediately to prevent flash
+      loadInProgress: false, // Reset load progress to allow new loads
+      lastLoadedWallet: null, // Clear last loaded to force reload
+      lastLoadTime: 0,
     });
   },
 

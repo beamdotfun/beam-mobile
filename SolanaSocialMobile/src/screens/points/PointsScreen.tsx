@@ -30,6 +30,7 @@ import {
 } from 'lucide-react-native';
 import {SegmentedControl} from '../../components/ui/SegmentedControl';
 import {AppNavBar} from '../../components/navigation/AppNavBar';
+import {SidebarMenu} from '../../components/navigation/SidebarMenu';
 import {useThemeStore} from '../../store/themeStore';
 
 interface PointsScreenProps {
@@ -204,6 +205,7 @@ const cardWidth = (width - 16 * 2 - 12) / 2; // 16dp gutters, 12dp gap
 export default function PointsScreen({navigation}: PointsScreenProps) {
   const {colors} = useThemeStore();
   const [selectedTab, setSelectedTab] = useState(0);
+  const [sidebarVisible, setSidebarVisible] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const tabs = ['Overview', 'Share & Earn', 'Refer Friends'];
@@ -211,6 +213,21 @@ export default function PointsScreen({navigation}: PointsScreenProps) {
   const handleMetricPress = useCallback((metricId: string) => {
     console.log('Metric pressed:', metricId);
   }, []);
+
+  const handleSidebarNavigate = useCallback((screen: string, params?: any) => {
+    setSidebarVisible(false);
+    // Navigate based on the screen
+    if (screen === 'Profile') {
+      // Navigate to Profile screen (with params if provided, otherwise user's own profile)
+      navigation.navigate('Profile', params);
+    } else if (['Settings', 'GeneralSettings', 'EmailSettings', 'PasswordSettings', 
+                'FeedSettings', 'WalletSettings', 'SolanaSettings', 'BadgesSettings',
+                'Posts', 'Receipts', 'Watchlist', 'Tokens', 'Points', 'Business', 'HelpCenter'].includes(screen)) {
+      navigation.navigate(screen, params);
+    } else {
+      navigation.navigate('FeedHome');
+    }
+  }, [navigation]);
 
   const handleEarnMethodPress = useCallback((methodId: string) => {
     console.log('Earn method pressed:', methodId);
@@ -583,8 +600,7 @@ export default function PointsScreen({navigation}: PointsScreenProps) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppNavBar
         title="Points"
-        showBackButton={true}
-        onBackPress={() => navigation.navigate('FeedHome')}
+        onProfilePress={() => setSidebarVisible(true)}
       />
 
       <View style={comingSoonStyles.content}>
@@ -596,6 +612,13 @@ export default function PointsScreen({navigation}: PointsScreenProps) {
           You're early! Our points program is coming soon.
         </Text>
       </View>
+
+      {/* Sidebar */}
+      <SidebarMenu
+        visible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
+        onNavigate={handleSidebarNavigate}
+      />
     </SafeAreaView>
   );
 
@@ -603,7 +626,7 @@ export default function PointsScreen({navigation}: PointsScreenProps) {
   /*
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <AppNavBar title="Points" showBackButton={true} onBackPress={() => navigation.navigate('FeedHome')} />
+      <AppNavBar title="Points" onProfilePress={() => setSidebarVisible(true)} />
 
       // Tab Navigation - Sticky
       <Animated.View 

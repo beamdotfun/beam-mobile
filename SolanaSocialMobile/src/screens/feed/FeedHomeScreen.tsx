@@ -218,7 +218,7 @@ export default function FeedHomeScreen({navigation}: Props) {
   const currentPollingFeedType = currentFeedType === 'recent' ? 'recent' : currentFeedType === 'watchlist' ? 'watchlist' : 'recent';
   
   const {
-    posts: pollingPosts,
+    posts: pollingPosts, // These are the actual new posts since last feed load
     newPostCount,
     isPolling,
     error: pollingError,
@@ -227,14 +227,15 @@ export default function FeedHomeScreen({navigation}: Props) {
     startPolling,
     stopPolling,
     clearPollingPosts,
+    resetPolling,
   } = useFeedPolling({
     feedType: currentPollingFeedType,
-    pollingInterval: 10000, // 10 seconds for more frequent updates
-    enabled: isAuthenticated && isOnline && shouldPollForFeed,
+    pollingInterval: 30000, // 30 seconds as recommended by backend
+    enabled: (currentFeedType === 'recent' || (currentFeedType === 'watchlist' && isAuthenticated)) && isOnline && shouldPollForFeed,
     onNewPosts: (newPosts) => {
       console.log(`[FeedHomeScreen] Received ${newPosts.length} new posts for ${currentFeedType} feed`);
-      // Note: New posts are handled internally by the hook
-      // We can show a notification here if needed
+      // Note: New posts are stored in pollingPosts state
+      // Blue pill indicator will show automatically
     },
   });
 
@@ -245,7 +246,11 @@ export default function FeedHomeScreen({navigation}: Props) {
       clearPollingPosts();
       markAsViewed();
     }
-  }, [currentFeedType, shouldPollForFeed, clearPollingPosts, markAsViewed]);
+    // Reset polling when switching between polling-enabled feeds
+    if (shouldPollForFeed) {
+      resetPolling(); // Complete reset for the new feed
+    }
+  }, [currentFeedType, shouldPollForFeed, clearPollingPosts, markAsViewed, resetPolling]);
 
   // Display posts - always use store posts now that we're adding polling posts to the store
   const displayPosts = React.useMemo(() => {
@@ -388,11 +393,15 @@ export default function FeedHomeScreen({navigation}: Props) {
     if (newPostCount > 0 && pollingPosts.length > 0 && shouldPollForFeed) {
       console.log('[FeedHomeScreen] Adding', pollingPosts.length, 'queued posts before refresh');
       useSocialStore.getState().addNewPosts(pollingPosts);
-      clearPollingPosts();
-      markAsViewed();
+      markAsViewed(); // This will update the reference point and clear posts
     }
     
     await refreshFeed();
+    
+    // Reset polling reference after refresh
+    if (shouldPollForFeed) {
+      refreshPolling();
+    }
     
     // Also reload billboard ad on refresh
     const userWalletAddress = user?.primary_wallet_address || user?.primaryWalletAddress || user?.walletAddress;
@@ -570,10 +579,11 @@ export default function FeedHomeScreen({navigation}: Props) {
         
         try {
           const startTime = Date.now();
-          console.log('🔍 FeedHomeScreen: About to call debouncedNavigate...');
-          const success = debouncedNavigate(navigation, 'Profile', params);
+          console.log('🔍 FeedHomeScreen: About to navigate to Profile...');
+          // Navigate to Profile screen with params
+          navigation.navigate('Profile', params);
           const endTime = Date.now();
-          console.log(`🔍 FeedHomeScreen: Profile navigation call completed in ${endTime - startTime}ms, success: ${success}`);
+          console.log(`🔍 FeedHomeScreen: Profile navigation call completed in ${endTime - startTime}ms`);
         } catch (error) {
           console.error('🚨 FeedHomeScreen: Profile navigation failed:', error);
           console.error('🚨 FeedHomeScreen: Error stack:', error.stack);
@@ -704,8 +714,10 @@ export default function FeedHomeScreen({navigation}: Props) {
             const newFeedType = feedTypeMap[index as keyof typeof feedTypeMap];
             if (currentFeedType !== newFeedType) {
               // Clear polling state immediately (non-blocking)
-              clearPollingPosts();
-              markAsViewed();
+              if (shouldPollForFeed) {
+                clearPollingPosts();
+                markAsViewed();
+              }
               
               // Scroll to top (non-blocking)
               flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -781,8 +793,10 @@ export default function FeedHomeScreen({navigation}: Props) {
             const newFeedType = feedTypeMap[index as keyof typeof feedTypeMap];
             if (currentFeedType !== newFeedType) {
               // Clear polling state immediately (non-blocking)
-              clearPollingPosts();
-              markAsViewed();
+              if (shouldPollForFeed) {
+                clearPollingPosts();
+                markAsViewed();
+              }
               
               // Scroll to top (non-blocking)
               flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -795,49 +809,53 @@ export default function FeedHomeScreen({navigation}: Props) {
       </View>
 
       {/* New posts notification banner - only show for feeds with polling */}
-      {newPostCount > 0 && shouldPollForFeed && (
+      {newPostCount > 0 && shouldPollForFeed && pollingPosts.length > 0 && (
         <StyledLoadMoreIndicator
           onPress={() => {
+            console.log(`[FeedHomeScreen] Loading ${pollingPosts.length} new posts`);
+            
             // Add new posts to the main feed
             if (pollingPosts.length > 0) {
               useSocialStore.getState().addNewPosts(pollingPosts);
               
-              // Clear polling posts to avoid duplication
-              clearPollingPosts();
+              // Mark as viewed to update the reference point and clear
+              markAsViewed();
             } else {
               // If no polling posts, just refresh the feed
               refreshFeed();
             }
             
-            // Mark as viewed to hide the banner
-            markAsViewed();
-            
             // Smooth scroll to top to show new posts
             flatListRef.current?.scrollToOffset({offset: 0, animated: true});
           }}
           pendingPosts={(() => {
-            // First try to get posts with profile pictures
-            const postsWithImages = pollingPosts.filter(post => {
-              const profilePicture = post.user?.profilePicture || post.user?.avatar_url;
-              return profilePicture && profilePicture.trim() !== '';
+            // Use the actual new posts for avatars
+            // Prioritize posts with profile pictures but show up to 3 regardless
+            const sortedPosts = [...pollingPosts].sort((a, b) => {
+              const aHasImage = !!(a.user?.profilePicture || a.user?.avatar_url);
+              const bHasImage = !!(b.user?.profilePicture || b.user?.avatar_url);
+              if (aHasImage && !bHasImage) return -1;
+              if (!aHasImage && bHasImage) return 1;
+              return 0;
             });
             
-            // If none have images, use all posts
-            const postsToShow = postsWithImages.length > 0 ? postsWithImages : pollingPosts;
+            // Take up to 3 posts for avatar display
+            const postsToShow = sortedPosts.slice(0, Math.min(3, sortedPosts.length));
             
             return postsToShow.map(post => ({
-              id: post.id,
+              id: post.id || post.signature || post.transactionHash,
               user: {
-                walletAddress: post.userWallet || post.user?.walletAddress,
-                display_name: post.user?.display_name || post.user?.name,
-                name: post.user?.name,
+                walletAddress: post.userWallet || post.user?.walletAddress || post.user?.wallet_address,
+                display_name: post.user?.display_name || post.user?.name || 'Anonymous',
+                name: post.user?.name || post.user?.display_name || 'Anonymous',
                 profilePicture: post.user?.profilePicture,
                 avatar_url: post.user?.avatar_url,
-                is_verified: post.user?.is_verified || post.user?.isVerified,
+                is_verified: post.user?.is_verified || post.user?.isVerified || false,
               }
             }));
           })()}
           isLoading={false}
+          totalCount={newPostCount}
         />
       )}
 

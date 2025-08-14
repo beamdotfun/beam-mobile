@@ -7,7 +7,12 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "version:patch": "npm version patch && npm run version:sync",
+    "version:minor": "npm version minor && npm run version:sync",
+    "version:major": "npm version major && npm run version:sync",
+    "version:sync": "node -e \"const pkg=require('./package.json');const fs=require('fs');fs.writeFileSync('../VERSION',pkg.version);console.log('Version synced to',pkg.version)\"",
+    "changelog:add": "node -e \"const d=new Date().toISOString().split('T')[0];const v=require('./package.json').version;console.log('Add your changes to CHANGELOG.md under [Unreleased] section');console.log('When releasing, move them under ['+v+'] - '+d)\""
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",

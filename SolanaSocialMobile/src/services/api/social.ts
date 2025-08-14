@@ -1,4 +1,5 @@
-import api, {getAuthToken} from './client';
+import api from './client';
+import {getAuthToken} from './tokenManager';
 import {API_CONFIG} from '../../config/api';
 import {
   ApiResponse,
@@ -273,8 +274,9 @@ export class SocialAPIService {
     const params: any = { page, limit };
     
     // Add time_range parameter for trending and controversial feeds if needed
-    if ((feedType === 'trending' || feedType === 'controversial') && timeRange) {
-      params.time_range = timeRange;
+    if ((feedType === 'trending' || feedType === 'controversial')) {
+      // Always provide a default time_range for controversial feed
+      params.time_range = timeRange || 'day';
     }
     
     console.log('🔍 Making API request to:', endpoint, 'with params:', params);
@@ -284,6 +286,8 @@ export class SocialAPIService {
       status: response.status,
       problem: response.problem,
       dataExists: !!response.data,
+      feedType: feedType,
+      actualEndpoint: endpoint,
     });
 
     if (!response.ok) {
@@ -296,6 +300,9 @@ export class SocialAPIService {
       success: response.data?.success,
       dataExists: !!response.data?.data,
       postsCount: response.data?.data?.posts?.length || 0,
+      directPostsCount: Array.isArray(response.data?.posts) ? response.data.posts.length : 0,
+      rawDataType: Array.isArray(response.data) ? 'array' : typeof response.data,
+      feedType: feedType,
     });
 
     // Handle new response format: { success: true, data: { posts, pagination, feedType } }
@@ -350,7 +357,46 @@ export class SocialAPIService {
       };
     }
 
-    throw new Error('Unexpected response structure');
+    // Handle alternative response formats
+    // Some endpoints might return { posts: [], pagination: {} } directly
+    if (response.data?.posts !== undefined) {
+      console.log('🔍 Direct posts format detected for', feedType);
+      return {
+        data: response.data.posts || [],
+        pagination: response.data.pagination || {
+          page: page,
+          limit: limit,
+          hasNext: (response.data.posts?.length || 0) >= limit
+        },
+        feedType: feedType
+      };
+    }
+
+    // Handle case where response is just an array of posts
+    if (Array.isArray(response.data)) {
+      console.log('🔍 Direct array format detected for', feedType);
+      return {
+        data: response.data,
+        pagination: {
+          page: page,
+          limit: limit,
+          hasNext: response.data.length >= limit
+        },
+        feedType: feedType
+      };
+    }
+
+    // Handle empty or malformed responses gracefully
+    console.warn('⚠️ Unexpected response structure for', feedType, '- returning empty result');
+    return {
+      data: [],
+      pagination: {
+        page: page,
+        limit: limit,
+        hasNext: false
+      },
+      feedType: feedType
+    };
   }
 
   async getUserPosts(
@@ -660,20 +706,35 @@ export class SocialAPIService {
       signatures: signatures.slice(0, 5).map(s => `${s.slice(0, 12)}...`) // Log first 5 abbreviated
     });
     
+    // Early return if no signatures provided
+    if (!signatures || signatures.length === 0) {
+      console.log('🔍 SocialAPI.getPostsBySignatures: No signatures provided, returning empty array');
+      return { posts: [] };
+    }
+    
     const response = await api.post<any>('/posts/batch', {
       signatures: signatures.slice(0, 50) // Limit to 50 posts
     });
 
     if (!response.ok) {
-      throw new Error(response.problem);
+      console.error('🔍 SocialAPI.getPostsBySignatures: Request failed:', {
+        problem: response.problem,
+        status: response.status,
+        data: response.data
+      });
+      // Return empty posts array on error instead of throwing
+      return { posts: [] };
     }
 
     console.log('🔍 SocialAPI.getPostsBySignatures: Response received:', {
       success: response.data?.success,
-      postsCount: response.data?.data?.posts?.length || 0
+      postsCount: response.data?.data?.posts?.length || 0,
+      hasData: !!response.data?.data,
+      hasPosts: !!response.data?.data?.posts
     });
 
-    return response.data?.data;
+    // Ensure we always return an object with posts array
+    return response.data?.data || { posts: [] };
   }
 
   // Receipt/Bookmark functionality per FEED_INTEGRATION_GUIDE.md
